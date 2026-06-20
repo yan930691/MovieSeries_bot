@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from config import BOT_TOKEN, ADMIN_ID, CHANNEL_ID, RENDER_URL
 from database import *
 from utils import parse_season_episode, extract_movie_title, extract_episode_name
@@ -52,8 +52,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📌 **အက်ဒမင်အတွက် ညွှန်ကြားချက်:**\n"
             "1️⃣ ပိုစတာ (ပုံ) ကို ပို့ပါ။\n"
             "2️⃣ ဇာတ်ညွှန်း (စာသား) ကို ပို့ပါ။\n"
-            "3️⃣ Video တွေကို Caption ထဲမှာ `S01E01` ထည့်ပြီး ပို့ပါ။ (အကုန်ပို့ပြီးရင် /done နှိပ်ပါ)\n"
-            "4️⃣ `/done` နှိပ်ပြီးရင် Bot က Post တစ်ခုတည်း ဆောက်ပေးမယ်။"
+            "3️⃣ Video တွေကို ဆက်တိုက်ပို့ပါ။ (Caption ထဲမှာ s1e1, S01E01, Season 1 Episode 1 စသည်ဖြင့် ပါရမယ်)\n"
+            "4️⃣ အကုန်ပို့ပြီးရင် `/done` ကို နှိပ်ပါ။\n\n"
+            "📝 **သတိပြုရန်:** Bot က caption ထဲက Season/Episode ကို အလိုအလျောက် ဖမ်းယူပေးမယ်။"
         )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -64,9 +65,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/help` - အကူအညီ\n"
         "• `/done` - Video အကုန်ပို့ပြီးရင် Post ဆောက်ရန်\n"
         "• `/cancel` - လုပ်နေတာကိုဖျက်ရန်\n\n"
-        "📝 **Video တင်နည်း**\n"
-        "Caption ထဲမှာ `S01E01` ထည့်ပါ။\n"
-        "ဥပမာ - `Game of Thrones S01E01`"
+        "📝 **Caption ပုံစံများ (Bot က အကုန်ဖမ်းယူနိုင်တယ်):**\n"
+        "• `s1e1`\n"
+        "• `S01E01`\n"
+        "• `Season 1 Episode 1`\n"
+        "• `1x01`\n"
+        "• `Episode 1` (ဒါဆိုရင် Season=1 လို့ သတ်မှတ်မယ်)"
     )
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,7 +122,6 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = []
             for ep in videos:
                 safe_title = movie_title.replace(" ", "_")
-                # Deep Link: t.me/Bot?start=movie_title_season_episode
                 deep_link = f"https://t.me/{context.bot.username}?start={safe_title}_{ep['season']}_{ep['episode']}"
                 button = InlineKeyboardButton(
                     text=ep['caption'],
@@ -169,6 +172,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id != ADMIN_ID:
         return
     
+    # Poster ရှိမရှိစစ်
     if not context.user_data.get('temp_poster'):
         await update.message.reply_text("⚠️ ကျေးဇူးပြုပြီး Poster အရင်ပို့ပါ။")
         return
@@ -176,15 +180,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     synopsis = update.message.text
     context.user_data['temp_synopsis'] = synopsis
     
-    await update.message.reply_text("✅ ဇာတ်ညွှန်း သိမ်းဆည်းပြီးပါပြီ။\n\n📹 Video တွေ စတင်ပို့ပါ။\nCaption ထဲမှာ `S01E01` ထည့်ပေးပါ။\n\n✅ အကုန်ပို့ပြီးရင် `/done` ကို နှိပ်ပါ။")
+    await update.message.reply_text("✅ ဇာတ်ညွှန်း သိမ်းဆည်းပြီးပါပြီ။\n\n📹 Video တွေ စတင်ပို့ပါ။\nCaption ထဲမှာ Season/Episode ပါအောင် ထည့်ပေးပါ။\n\n✅ အကုန်ပို့ပြီးရင် `/done` ကို နှိပ်ပါ။")
 
-# ---- Admin က Video ပို့တာ (တစ်ပုဒ်ချင်းစီ) ----
+# ---- Admin က Video ပို့တာ (စုဆောင်းမယ်) ----
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
         await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
         return
     
+    # Poster နဲ့ Synopsis ရှိမရှိစစ်
     if not context.user_data.get('temp_poster') or not context.user_data.get('temp_synopsis'):
         await update.message.reply_text("⚠️ ကျေးဇူးပြုပြီး Poster နဲ့ Synopsis အရင်ပို့ပါ။")
         return
@@ -195,16 +200,22 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = update.message.video
     caption = update.message.caption or ""
     
+    # Season/Episode ကို ဖမ်းယူ
     season, episode = parse_season_episode(caption)
     if not season or not episode:
-        await update.message.reply_text("⚠️ Caption ထဲမှာ `S01E01` ထည့်ပေးပါ။")
+        await update.message.reply_text("⚠️ Caption ထဲမှာ Season/Episode မပါဘူး။ ဥပမာ - `s1e1` လို့ ထည့်ပေးပါ။")
         return
     
     movie_title = extract_movie_title(caption)
     episode_name = extract_episode_name(caption)
     
-    # Movie Title ကို သိမ်းမယ်
-    context.user_data['temp_movie'] = movie_title
+    # Movie Title ကို သိမ်းမယ် (ပထမ Video ပေါ်မူတည်)
+    if not context.user_data.get('temp_movie'):
+        context.user_data['temp_movie'] = movie_title
+    else:
+        # ဒုတိယ Video ကစပြီး Title ကို ပြင်ဆင်ဖို့
+        # ဒါပေမယ့် အားလုံး တူညီမယ်လို့ ယူဆတယ်
+        pass
     
     # Video ကို DB မှာ သိမ်းမယ်
     save_video_file(video.file_id, movie_title, season, episode, caption)
@@ -228,45 +239,6 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ ဆက်ပို့နိုင်ပါတယ်။ အကုန်ပြီးရင် `/done` နှိပ်ပါ။"
     )
 
-# ---- Media Group (တစ်ခါတည်း ဖိုင်များများပို့တာ) ကို ကိုင်တွယ်မယ် ----
-async def handle_media_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id != ADMIN_ID:
-        return
-    
-    if not context.user_data.get('temp_poster') or not context.user_data.get('temp_synopsis'):
-        await update.message.reply_text("⚠️ ကျေးဇူးပြုပြီး Poster နဲ့ Synopsis အရင်ပို့ပါ။")
-        return
-    
-    if not update.message.media_group_id:
-        return
-    
-    # Media Group ထဲက Video တွေကို process လုပ်မယ်
-    for media_item in update.message.media_group:
-        if isinstance(media_item, dict) and media_item.get('type') == 'video':
-            # ဒီနေရာမှာ media_item က video file object ဖြစ်မယ်
-            # ဒါပေမယ့် media_group ကို သီးခြား handler မှာ ကိုင်တွယ်ရတာ ပိုလွယ်တယ်
-            # ဒီအတွက် message object ကို သုံးမယ်
-            pass
-    
-    # အလွယ်ဆုံးနည်းက media group ကို သီးခြားစီ process မလုပ်ဘဲ
-    # အစား handle_video ကို ပြန်သုံးမယ် (ဒါပေမယ့် group အတွက် သီးခြားရေးတာ ပိုကောင်း)
-    await update.message.reply_text("📹 Media Group ကို လက်ခံရရှိပါပြီ။ Video တွေကို တစ်ပုဒ်ချင်းစီ process လုပ်နေပါတယ်...")
-    
-    # ဒီနေရာမှာ media group ထဲက video တွေကို ဆွဲထုတ်ပြီး process လုပ်ဖို့ လိုတယ်
-    # ဒါပေမယ့် PTB မှာ media group အတွက် built-in handler မရှိသေးဘူး
-    # ဒါကြောင့် ဒီနေရာမှာ အလွယ်ဆုံးနည်းက တစ်ပုဒ်ချင်းစီ ပို့ဖို့ ပြောတာပဲ
-
-    await update.message.reply_text(
-        "⚠️ Media Group (တစ်ခါတည်း ဖိုင်များများပို့တာ) ကို မထောက်ပံ့သေးပါ။\n"
-        "ကျေးဇူးပြုပြီး **တစ်ပုဒ်ချင်းစီ** ပို့ပေးပါ။\n\n"
-        "သို့မဟုတ် အောက်ပါအတိုင်း ပို့နိုင်ပါတယ်:\n"
-        "1. Video 1 ကို ပို့ပါ\n"
-        "2. Video 2 ကို ပို့ပါ\n"
-        "3. ... စသည်ဖြင့်\n"
-        "4. အကုန်ပြီးရင် `/done` နှိပ်ပါ။"
-    )
-
 # ---- Main Function ----
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -281,8 +253,6 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.VIDEO, handle_video))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    # Media Group အတွက် (ဒါပေမယ့် PTB က မထောက်ပံ့သေးဘူး)
-    # app.add_handler(MessageHandler(filters.MEDIA_GROUP, handle_media_group))
     
     port = int(os.environ.get("PORT", 10000))
     logger.info(f"Starting webhook on port {port}")
