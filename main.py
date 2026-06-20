@@ -178,7 +178,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text("✅ ဇာတ်ညွှန်း သိမ်းဆည်းပြီးပါပြီ။\n\n📹 Video တွေ စတင်ပို့ပါ။\nCaption ထဲမှာ `S01E01` ထည့်ပေးပါ။\n\n✅ အကုန်ပို့ပြီးရင် `/done` ကို နှိပ်ပါ။")
 
-# ---- Admin က Video ပို့တာ (စုဆောင်းမယ်) ----
+# ---- Admin က Video ပို့တာ (တစ်ပုဒ်ချင်းစီ) ----
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
@@ -228,6 +228,45 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ ဆက်ပို့နိုင်ပါတယ်။ အကုန်ပြီးရင် `/done` နှိပ်ပါ။"
     )
 
+# ---- Media Group (တစ်ခါတည်း ဖိုင်များများပို့တာ) ကို ကိုင်တွယ်မယ် ----
+async def handle_media_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+    
+    if not context.user_data.get('temp_poster') or not context.user_data.get('temp_synopsis'):
+        await update.message.reply_text("⚠️ ကျေးဇူးပြုပြီး Poster နဲ့ Synopsis အရင်ပို့ပါ။")
+        return
+    
+    if not update.message.media_group_id:
+        return
+    
+    # Media Group ထဲက Video တွေကို process လုပ်မယ်
+    for media_item in update.message.media_group:
+        if isinstance(media_item, dict) and media_item.get('type') == 'video':
+            # ဒီနေရာမှာ media_item က video file object ဖြစ်မယ်
+            # ဒါပေမယ့် media_group ကို သီးခြား handler မှာ ကိုင်တွယ်ရတာ ပိုလွယ်တယ်
+            # ဒီအတွက် message object ကို သုံးမယ်
+            pass
+    
+    # အလွယ်ဆုံးနည်းက media group ကို သီးခြားစီ process မလုပ်ဘဲ
+    # အစား handle_video ကို ပြန်သုံးမယ် (ဒါပေမယ့် group အတွက် သီးခြားရေးတာ ပိုကောင်း)
+    await update.message.reply_text("📹 Media Group ကို လက်ခံရရှိပါပြီ။ Video တွေကို တစ်ပုဒ်ချင်းစီ process လုပ်နေပါတယ်...")
+    
+    # ဒီနေရာမှာ media group ထဲက video တွေကို ဆွဲထုတ်ပြီး process လုပ်ဖို့ လိုတယ်
+    # ဒါပေမယ့် PTB မှာ media group အတွက် built-in handler မရှိသေးဘူး
+    # ဒါကြောင့် ဒီနေရာမှာ အလွယ်ဆုံးနည်းက တစ်ပုဒ်ချင်းစီ ပို့ဖို့ ပြောတာပဲ
+
+    await update.message.reply_text(
+        "⚠️ Media Group (တစ်ခါတည်း ဖိုင်များများပို့တာ) ကို မထောက်ပံ့သေးပါ။\n"
+        "ကျေးဇူးပြုပြီး **တစ်ပုဒ်ချင်းစီ** ပို့ပေးပါ။\n\n"
+        "သို့မဟုတ် အောက်ပါအတိုင်း ပို့နိုင်ပါတယ်:\n"
+        "1. Video 1 ကို ပို့ပါ\n"
+        "2. Video 2 ကို ပို့ပါ\n"
+        "3. ... စသည်ဖြင့်\n"
+        "4. အကုန်ပြီးရင် `/done` နှိပ်ပါ။"
+    )
+
 # ---- Main Function ----
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -242,6 +281,8 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.VIDEO, handle_video))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    # Media Group အတွက် (ဒါပေမယ့် PTB က မထောက်ပံ့သေးဘူး)
+    # app.add_handler(MessageHandler(filters.MEDIA_GROUP, handle_media_group))
     
     port = int(os.environ.get("PORT", 10000))
     logger.info(f"Starting webhook on port {port}")
