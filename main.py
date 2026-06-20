@@ -3,7 +3,7 @@ import logging
 import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from config import BOT_TOKEN, ADMIN_ID, CHANNEL_ID, RENDER_URL
 from database import *
 from utils import parse_season_episode, extract_movie_title
@@ -242,15 +242,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.message.reply_text("❌ ဒီ Episode အတွက် Video မတွေ့ပါ။")
 
-# ---- Main Function ----
+# ---- Main Function (PTB 22.x အတွက် ပြင်ဆင်ထားတယ်) ----
 def main():
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
-    app = Application.builder().token(BOT_TOKEN).build()
+    # PTB 22.x မှာ event loop ကို အလိုအလျောက် စီမံပေးတယ်
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     
     # Commands (မြန်မာလို)
     app.add_handler(CommandHandler("start", start_command))
