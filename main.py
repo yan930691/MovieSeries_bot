@@ -176,7 +176,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     synopsis = update.message.text
     context.user_data['temp_synopsis'] = synopsis
     
-    # Movie Title ကို သိမ်းမယ် (ပထမ Video ပို့တဲ့အခါ သိမ်းမယ်)
     await update.message.reply_text("✅ ဇာတ်ညွှန်း သိမ်းဆည်းပြီးပါပြီ။\n\n📹 Video တွေ စတင်ပို့ပါ။\nCaption ထဲမှာ `S01E01` ထည့်ပေးပါ။\n\n✅ အကုန်ပို့ပြီးရင် `/done` ကို နှိပ်ပါ။")
 
 # ---- Admin က Video ပို့တာ (စုဆောင်းမယ်) ----
