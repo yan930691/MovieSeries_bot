@@ -1,4 +1,4 @@
-python-telegram-bot[job-queue]==20.8
+python-telegram-bot[job-queue]==22.2
 pymongo==4.11.2
 telegraph==2.2.0
 python-dotenv==1.0.0
