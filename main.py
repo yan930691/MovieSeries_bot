@@ -242,9 +242,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.message.reply_text("❌ ဒီ Episode အတွက် Video မတွေ့ပါ။")
 
-# ---- Main Function (PTB 22.x အတွက် ပြင်ဆင်ထားတယ်) ----
+# ---- Main Function (PTB 22.4 နဲ့ အဆင်ပြေအောင်) ----
 def main():
-    # PTB 22.x မှာ event loop ကို အလိုအလျောက် စီမံပေးတယ်
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     
     # Commands (မြန်မာလို)
