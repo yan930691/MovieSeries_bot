@@ -4,12 +4,51 @@ import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from config import BOT_TOKEN, ADMIN_ID, CHANNEL_ID, RENDER_URL
-from database import save_post_data
 from telegraph_helper import create_telegraph_page
-from utils import extract_deeplink_and_name, extract_season_episode_from_name, extract_button_name_from_name
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ---- Helper Functions ----
+def extract_season_episode_from_caption(caption):
+    """Caption ထဲက S01E03 ကို ထုတ်ယူမယ်"""
+    if not caption:
+        return None, None
+    
+    patterns = [
+        r'(?:S|Season)\s*(\d+)\s*(?:E|Episode)\s*(\d+)',
+        r's(\d+)e(\d+)',
+        r'(\d+)x(\d+)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, caption, re.IGNORECASE)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+    
+    return None, None
+
+def extract_movie_title(caption):
+    """Caption ထဲက ဇာတ်ကားနာမည်ကို ထုတ်ယူမယ်"""
+    if not caption:
+        return "Movie"
+    
+    # Season/Episode ဖော်ပြချက်တွေကို ဖယ်ရှားမယ်
+    cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', caption, flags=re.IGNORECASE)
+    cleaned = re.sub(r's\d+e\d+', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\d+x\d+', '', cleaned)
+    
+    # Year ကို ဖယ်ရှားမယ်
+    cleaned = re.sub(r'\(\d{4}\)', '', cleaned)
+    
+    # Quality နဲ့ Format တွေကို ဖယ်ရှားမယ်
+    cleaned = re.sub(r'\b\d{3,4}p\b', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\b(MPK|MKV|MP4|AVI|x264|x265|HEVC)\b', '', cleaned, flags=re.IGNORECASE)
+    
+    cleaned = re.sub(r'\s+', ' ', cleaned)
+    cleaned = cleaned.strip()
+    
+    return cleaned or "Movie"
 
 # ---- Command Handlers ----
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -19,12 +58,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     await update.message.reply_text(
-        "🎥 **Button Creator Bot**\n\n"
+        "🎬 **Button Creator Bot**\n\n"
         "📌 **ညွှန်ကြားချက်:**\n"
         "1️⃣ `/post` နှိပ်ပြီး Post အသစ်စတင်ပါ။\n"
         "2️⃣ Poster (ပုံ) → Caption (စာသား) ပို့ပါ။\n"
         "3️⃣ `/1`, `/2`, `/3` ... နှိပ်ပြီး Season ရွေးပါ။\n"
-        "4️⃣ Deep Link တွေ ဆက်တိုက်ပို့ပါ။ (ဘယ်ပုံစံမဆို ရပါတယ်)\n"
+        "4️⃣ Deep Link တွေ ဆက်တိုက်ပို့ပါ။\n"
         "5️⃣ Season ပြီးရင် `1`, `2`, `3` ... နှိပ်ပါ။\n"
         "6️⃣ အကုန်ပြီးရင် `/done` နှိပ်ပါ။"
     )
@@ -64,18 +103,18 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_episodes = sum(len(links) for links in seasons.values())
     await update.message.reply_text(f"⏳ Post ဆောက်နေပါတယ်... (Seasons: {len(seasons)}, Episodes: {total_episodes})")
     
-    # ---- Telegraph ----
+    # ---- Telegraph (Caption ရှည်ရင်) ----
     telegraph_url = None
     telegraph_button = None
     
     if len(caption_text) > 1024:
-        telegraph_url = create_telegraph_page("ဇာတ်ညွှန်း", caption_text)
+        telegraph_url = create_telegraph_page("📖 ဇာတ်ညွှန်း", caption_text)
         if telegraph_url:
-            caption_display = "ဇာတ်ညွှန်းရှည်လွန်းလို့ Telegraph မှာ တင်ထားပါတယ်။"
             telegraph_button = InlineKeyboardButton(
                 text="📖 ဇာတ်ညွှန်းအပြည့်အစုံဖတ်ရန်",
                 url=telegraph_url
             )
+            caption_display = ""  # စာတန်း မပါတော့ဘူး
         else:
             caption_display = caption_text[:1024] + "..."
     else:
@@ -84,32 +123,40 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         keyboard = []
         
+        # Telegraph Button ရှိရင် ထည့်မယ်
         if telegraph_button:
             keyboard.append([telegraph_button])
         
+        # Season အလိုက် ခလုတ်တွေကို စီစဉ်မယ်
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
             
-            # Season Header
-            keyboard.append([InlineKeyboardButton(f"─── Season {season_num} (Episodes: {len(season_links)}) ───", callback_data="none")])
+            # Episode Number အလိုက် စီမယ်
+            season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
             
-            for link_data in season_links:
+            # Season Header
+            keyboard.append([InlineKeyboardButton(f"🎬 Season {season_num} (Episodes: {len(season_links_sorted)})", callback_data="none")])
+            
+            for link_data in season_links_sorted:
                 button_text = link_data['text']
                 button_url = link_data['url']
                 keyboard.append([InlineKeyboardButton(button_text, url=button_url)])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        final_caption = f"🎬 **{caption_display}**\n\n📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
+        # Post Caption ဆောက်မယ်
+        if caption_display:
+            final_caption = f"🎬 **{caption_display}**\n\n📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
+        else:
+            final_caption = f"📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
         
+        # Admin ကိုပဲ ပို့မယ်
         await update.message.reply_photo(
             photo=poster,
             caption=final_caption,
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
-        
-        save_post_data(poster, caption_text, seasons, telegraph_url)
         
         await update.message.reply_text(
             f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n\n"
@@ -131,7 +178,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text("✅ လုပ်ဆောင်နေတာကို ဖျက်လိုက်ပါပြီ။")
 
-# ---- Season Command Handlers ----
+# ---- Season Command Handlers (/1, /2, /3 ...) ----
 async def season_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
@@ -159,7 +206,7 @@ async def season_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ **Season {season_num}** အတွက် အဆင်သင့်ဖြစ်ပါပြီ။\n\n"
         f"🔗 Deep Link တွေ စတင်ပို့ပါ။\n"
-        f"ဘယ်ပုံစံမဆို ရပါတယ်။ Bot က ကိုယ်တိုင်ဖတ်ပြီး သိမ်းပေးမယ်။\n\n"
+        f"ပုံစံ: `https://t.me/...` (သို့) `နာမည်|https://t.me/...`\n\n"
         f"✅ Season {season_num} ပြီးရင် `{season_num}` လို့ ရိုက်ပါ။"
     )
 
@@ -207,7 +254,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # ---- Season Done ----
+    # ---- Season Done (နံပါတ်တစ်ခုတည်းရိုက်တာ) ----
     if text.isdigit() and step and step.startswith('adding_links_season_'):
         season_num = text
         current_season = context.user_data.get('current_season')
@@ -246,24 +293,44 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if step and step.startswith('adding_links_season_'):
         season_num = step.replace('adding_links_season_', '')
         
-        # ---- ခင်ဗျားပို့တဲ့ ပုံစံကို ဖမ်းယူမယ် ----
-        url, name = extract_deeplink_and_name(text)
-        
-        if not url:
-            await update.message.reply_text(
-                "⚠️ Deep Link မတွေ့ပါ။\n"
-                "ကျေးဇူးပြုပြီး `https://t.me/...` ပါတဲ့ Message ကို ပို့ပါ။"
-            )
-            return
-        
-        # Season/Episode ကို နာမည်ထဲကနေ ထုတ်ယူမယ်
-        s, e = extract_season_episode_from_name(name)
-        
-        # Button Name ကို ပြင်ဆင်မယ်
-        if s and e:
-            button_text = f"S{s}E{e} - {extract_button_name_from_name(name)}"
+        # ---- ခင်ဗျားပို့တဲ့ပုံစံကို ကိုင်တွယ်မယ် ----
+        # ပုံစံ ၁: "နာမည်|https://t.me/..." (ခင်ဗျား သတ်မှတ်ချင်ရင်)
+        if '|' in text:
+            parts = text.split('|', 1)
+            button_text = parts[0].strip()
+            button_url = parts[1].strip()
         else:
-            button_text = extract_button_name_from_name(name)
+            # ပုံစံ ၂: "https://t.me/..." (Bot က ကိုယ်တိုင်ဖန်တီးမယ်)
+            button_url = text
+            # URL မှန်မမှန် စစ်မယ်
+            if not button_url.startswith('https://t.me/'):
+                await update.message.reply_text(
+                    "⚠️ URL က `https://t.me/...` နဲ့ စရမယ်။\n\n"
+                    "ပုံစံ: `https://t.me/Bot?start=xxx` (သို့) `နာမည်|https://t.me/Bot?start=xxx`"
+                )
+                return
+            
+            # ---- Caption ကနေ Season/Episode ထုတ်ယူမယ် ----
+            # ခင်ဗျားရဲ့ မက်ဆေ့ချ်မှာ Caption ပါရင် သိမ်းထားတဲ့ Caption ကို သုံးမယ်
+            # ဒါပေမယ့် ခင်ဗျား ပို့တဲ့ မက်ဆေ့ချ်မှာ စာသားပါတယ်
+            # ဒီတော့ ဒီ text ကိုပဲ သုံးမယ်
+            caption_text = text
+            
+            # Season/Episode ကို ထုတ်ယူမယ်
+            season, episode = extract_season_episode_from_caption(caption_text)
+            movie_title = extract_movie_title(caption_text)
+            
+            if season and episode:
+                # အလိုအလျောက် ခလုတ်နာမည် ဖန်တီးမယ်
+                button_text = f"{movie_title} S{season}E{episode} ရယူရန် နှိပ်ပါ"
+            else:
+                # မတွေ့ရင် ရိုးရိုးနာမည် သုံးမယ်
+                button_text = f"Episode ရယူရန် နှိပ်ပါ"
+        
+        # URL မှန်မမှန် ထပ်စစ်မယ်
+        if not button_url.startswith('https://t.me/'):
+            await update.message.reply_text("⚠️ URL က `https://t.me/...` နဲ့ စရမယ်။")
+            return
         
         # Season အတွက် သိမ်းမယ်
         if 'temp_seasons' not in context.user_data:
@@ -272,9 +339,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if season_num not in context.user_data['temp_seasons']:
             context.user_data['temp_seasons'][season_num] = []
         
+        # Episode Number ကို သိမ်းမယ် (စီရန်)
+        _, ep_num = extract_season_episode_from_caption(button_url)
+        
         context.user_data['temp_seasons'][season_num].append({
             'text': button_text,
-            'url': url
+            'url': button_url,
+            'episode': ep_num or 0
         })
         
         total = len(context.user_data['temp_seasons'][season_num])
