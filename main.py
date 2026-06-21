@@ -1,38 +1,34 @@
 import os
 import logging
 import re
+import hashlib
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from config import BOT_TOKEN, ADMIN_ID, CHANNEL_ID, RENDER_URL
 from telegraph_helper import create_telegraph_page
+from database import save_post_data, get_all_posts, save_file_data, get_file_by_deep_link
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ---- Helper Functions ----
+# ---- Helper Functions (Button Creator အတွက်) ----
 def extract_season_episode_from_caption(caption):
-    """Caption ထဲက S01E03 ကို ထုတ်ယူမယ်"""
     if not caption:
         return None, None
-    
     patterns = [
         r'(?:S|Season)\s*(\d+)\s*(?:E|Episode)\s*(\d+)',
         r's(\d+)e(\d+)',
         r'(\d+)x(\d+)',
     ]
-    
     for pattern in patterns:
         match = re.search(pattern, caption, re.IGNORECASE)
         if match:
             return int(match.group(1)), int(match.group(2))
-    
     return None, None
 
 def extract_movie_title(caption):
-    """Caption ထဲက ဇာတ်ကားနာမည်ကို ထုတ်ယူမယ်"""
     if not caption:
         return "Movie"
-    
     cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', caption, flags=re.IGNORECASE)
     cleaned = re.sub(r's\d+e\d+', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\d+x\d+', '', cleaned)
@@ -41,25 +37,37 @@ def extract_movie_title(caption):
     cleaned = re.sub(r'\b(MPK|MKV|MP4|AVI|x264|x265|HEVC)\b', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\s+', ' ', cleaned)
     cleaned = cleaned.strip()
-    
     return cleaned or "Movie"
 
-# ---- Command Handlers ----
+# ---- Deep Link Generator Functions ----
+def generate_deep_link(file_name, caption):
+    """ဖိုင်နာမည်နဲ့ Caption ကိုကြည့်ပြီး Deep Link ထုတ်ပေးမယ်"""
+    clean_name = re.sub(r'[^a-zA-Z0-9]', '_', file_name)[:30]
+    hash_id = hashlib.md5(f"{file_name}_{caption}_{datetime.utcnow().timestamp()}".encode()).hexdigest()[:12]
+    return f"https://t.me/{BOT_USERNAME}?start={hash_id}"
+
+# ---- Command Handlers (Button Creator) ----
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
         await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
         return
     
+    posts_count = len(get_all_posts(limit=100))
+    
     await update.message.reply_text(
-        "🎬 **Button Creator Bot**\n\n"
-        "📌 **ညွှန်ကြားချက်:**\n"
+        f"🎬 **Button Creator Bot**\n\n"
+        f"📊 သိမ်းဆည်းထားတဲ့ Post ပေါင်း: {posts_count}\n\n"
+        "📌 **Button Creator အတွက်:**\n"
         "1️⃣ `/post` နှိပ်ပြီး Post အသစ်စတင်ပါ။\n"
         "2️⃣ Poster (ပုံ) → Caption (စာသား) ပို့ပါ။\n"
         "3️⃣ `/1`, `/2`, `/3` ... နှိပ်ပြီး Season ရွေးပါ။\n"
         "4️⃣ Deep Link တွေ ဆက်တိုက်ပို့ပါ။\n"
         "5️⃣ Season ပြီးရင် `1`, `2`, `3` ... နှိပ်ပါ။\n"
-        "6️⃣ အကုန်ပြီးရင် `/done` နှိပ်ပါ။"
+        "6️⃣ အကုန်ပြီးရင် `/done` နှိပ်ပါ။\n\n"
+        "🔗 **Deep Link Generator အတွက်:**\n"
+        "• ဘာဖိုင်မဆို တိုက်ရိုက်ပို့ပါ။\n"
+        "• Bot က Caption ကိုကြည့်ပြီး Deep Link ထုတ်ပေးမယ်။"
     )
 
 async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -97,7 +105,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_episodes = sum(len(links) for links in seasons.values())
     await update.message.reply_text(f"⏳ Post ဆောက်နေပါတယ်... (Seasons: {len(seasons)}, Episodes: {total_episodes})")
     
-    # ---- Telegraph (Caption ရှည်ရင်) ----
+    # Telegraph
     telegraph_url = None
     telegraph_button = None
     
@@ -108,20 +116,18 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="📖 ဇာတ်ညွှန်းအပြည့်အစုံဖတ်ရန်",
                 url=telegraph_url
             )
-            caption_display = ""  # ဇာတ်ညွှန်းကို Button နဲ့ပဲ ဖတ်ရမယ်
+            caption_display = ""
         else:
-            caption_display = caption_text[:1024] + "..."  # Telegraph မရရင် အတိုချုံးပြမယ်
+            caption_display = caption_text[:1024] + "..."
     else:
-        caption_display = caption_text  # ဇာတ်ညွှန်း တစ်ခုလုံးကို ပြမယ်
+        caption_display = caption_text
     
     try:
         keyboard = []
         
-        # Telegraph Button ရှိရင် ထည့်မယ်
         if telegraph_button:
             keyboard.append([telegraph_button])
         
-        # Season အလိုက် ခလုတ်တွေကို စီစဉ်မယ်
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
             season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
@@ -135,13 +141,11 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # ---- Post Caption ဆောက်မယ် ----
         if caption_display:
             final_caption = f"🎬 **{caption_display}**\n\n📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
         else:
             final_caption = f"📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
         
-        # Admin ကိုပဲ ပို့မယ်
         await update.message.reply_photo(
             photo=poster,
             caption=final_caption,
@@ -149,12 +153,19 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         
-        # ---- Database ကို လုံးဝ မသိမ်းတော့ဘူး ----
-        await update.message.reply_text(
-            f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n\n"
-            f"📊 Season {len(seasons)} ခု၊ Episode {total_episodes} ခု ပါဝင်ပါတယ်။\n\n"
-            f"💡 Channel မှာ ပြန်တင်ချင်ရင် ဒီ Post ကို Forward လုပ်ပါ။"
-        )
+        try:
+            save_post_data(poster, caption_text, seasons, telegraph_url)
+            await update.message.reply_text(
+                f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n"
+                f"📊 Season {len(seasons)} ခု၊ Episode {total_episodes} ခု ပါဝင်ပါတယ်။\n"
+                f"💾 Database မှာလည်း သိမ်းဆည်းထားပါတယ်။"
+            )
+        except Exception as db_error:
+            logger.error(f"Database Save Error: {db_error}")
+            await update.message.reply_text(
+                f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n"
+                f"📊 Season {len(seasons)} ခု၊ Episode {total_episodes} ခု ပါဝင်ပါတယ်။"
+            )
         
     except Exception as e:
         await update.message.reply_text(f"❌ Post တင်ရာမှာ အမှားရှိသွားတယ်: {e}")
@@ -202,8 +213,8 @@ async def season_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ Season {season_num} ပြီးရင် `{season_num}` လို့ ရိုက်ပါ။"
     )
 
-# ---- Handlers ----
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ---- Handlers (Button Creator) ----
+async def handle_photo_button_creator(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
         return
@@ -219,7 +230,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['step'] = 'waiting_caption'
     await update.message.reply_text("✅ ပိုစတာ သိမ်းဆည်းပြီးပါပြီ။ Caption (စာသား) ကို ပို့ပါ။")
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_text_button_creator(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
         return
@@ -231,7 +242,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     step = context.user_data.get('step')
     
-    # ---- Caption စောင့်နေတယ် ----
+    # Caption
     if step == 'waiting_caption':
         context.user_data['temp_caption'] = text
         context.user_data['step'] = 'waiting_season'
@@ -246,7 +257,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # ---- Season Done ----
+    # Season Done
     if text.isdigit() and step and step.startswith('adding_links_season_'):
         season_num = text
         current_season = context.user_data.get('current_season')
@@ -281,11 +292,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['step'] = 'waiting_season'
         return
     
-    # ---- Deep Link တွေ စုဆောင်းနေတယ် ----
+    # Deep Link စုဆောင်းနေတယ်
     if step and step.startswith('adding_links_season_'):
         season_num = step.replace('adding_links_season_', '')
         
-        # ပုံစံခွဲထုတ်မယ်
         if '|' in text:
             parts = text.split('|', 1)
             button_text = parts[0].strip()
@@ -299,13 +309,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
             
-            # ---- ခင်ဗျားရဲ့ ပုံစံအတိုင်း ကိုင်တွယ်မယ် ----
-            # ခင်ဗျားပို့တဲ့ စာသားထဲက Season/Episode ကို ထုတ်ယူမယ်
-            # ဥပမာ - "The Wire (2002) - S01E12 - Cleaning Up 1080p MPK.mp4" ဆိုရင်
-            # Season 1, Episode 12 ကို ထုတ်ယူမယ်
-            caption_text_for_extract = text
-            season, episode = extract_season_episode_from_caption(caption_text_for_extract)
-            movie_title = extract_movie_title(caption_text_for_extract)
+            caption_text = text
+            season, episode = extract_season_episode_from_caption(caption_text)
+            movie_title = extract_movie_title(caption_text)
             
             if season and episode:
                 button_text = f"{movie_title} S{season}E{episode} ရယူရန် နှိပ်ပါ"
@@ -322,8 +328,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if season_num not in context.user_data['temp_seasons']:
             context.user_data['temp_seasons'][season_num] = []
         
-        # Episode Number ကို သိမ်းမယ် (စီရန်)
-        _, ep_num = extract_season_episode_from_caption(text)
+        _, ep_num = extract_season_episode_from_caption(button_url)
         
         context.user_data['temp_seasons'][season_num].append({
             'text': button_text,
@@ -349,20 +354,169 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📌 `/cancel` - ဖျက်ရန်"
     )
 
+# ---- Deep Link Generator Handler (ဖိုင်တွေကို ကိုင်တွယ်မယ်) ----
+async def handle_file_deep_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
+        return
+    
+    # Button Creator က သုံးနေတယ်ဆိုရင် မလုပ်ပါနဲ့
+    if context.user_data.get('step'):
+        return
+    
+    # ဖိုင်ကို စစ်ဆေးမယ်
+    file_obj = None
+    file_name = None
+    file_id = None
+    file_type = None
+    
+    if update.message.document:
+        file_obj = update.message.document
+        file_name = file_obj.file_name or "Unknown"
+        file_id = file_obj.file_id
+        file_type = "Document"
+    elif update.message.video:
+        file_obj = update.message.video
+        file_name = file_obj.file_name or "Video"
+        file_id = file_obj.file_id
+        file_type = "Video"
+    elif update.message.audio:
+        file_obj = update.message.audio
+        file_name = file_obj.file_name or "Audio"
+        file_id = file_obj.file_id
+        file_type = "Audio"
+    elif update.message.photo:
+        file_obj = update.message.photo[-1]
+        file_name = f"Photo_{file_obj.file_unique_id[:8]}"
+        file_id = file_obj.file_id
+        file_type = "Photo"
+    else:
+        return
+    
+    caption = update.message.caption or ""
+    
+    if not caption:
+        await update.message.reply_text(
+            "⚠️ ကျေးဇူးပြုပြီး ဖိုင်အတွက် **Caption** ထည့်ပေးပါ။\n\n"
+            "📝 ဥပမာ: `The Wire S01E01 - The Target`"
+        )
+        return
+    
+    # Deep Link ထုတ်မယ်
+    global BOT_USERNAME
+    BOT_USERNAME = context.bot.username
+    deep_link = generate_deep_link(file_name, caption)
+    
+    # Database မှာ သိမ်းမယ်
+    try:
+        save_file_data(file_id, file_name, caption, deep_link, file_type)
+        db_status = "💾 Database မှာလည်း သိမ်းဆည်းထားပါတယ်။"
+    except Exception as e:
+        logger.error(f"Database Save Error: {e}")
+        db_status = "⚠️ Database မှာ သိမ်းရာမှာ အဆင်မပြေပေမယ့် Link က ရှိနေပါတယ်။"
+    
+    # Deep Link ကို ပြန်ပို့မယ်
+    reply_text = (
+        f"🔗 **Deep Link အဆင်သင့်ဖြစ်ပါပြီ။**\n\n"
+        f"`{deep_link}`\n\n"
+        f"📁 **ဖိုင်အချက်အလက်:**\n"
+        f"📄 {file_name}\n"
+        f"📝 Caption: {caption}\n\n"
+        f"{db_status}\n\n"
+        f"💡 **သုံးစွဲသူများအတွက်:**\n"
+        f"ဒီ Link ကို နှိပ်လိုက်ရင် ဖိုင်ကို Bot က ပြန်ပို့ပေးမယ်။"
+    )
+    
+    await update.message.reply_text(reply_text, parse_mode='Markdown')
+
+# ---- Deep Link Handler (သုံးစွဲသူတွေ Link နှိပ်ရင်) ----
+async def deep_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ /start?start=xxx ဆိုပြီး လာရင် ဖိုင်ကို ပြန်ပို့မယ် """
+    user_id = update.effective_user.id
+    args = context.args
+    
+    if not args:
+        # Admin အတွက် /start
+        if user_id == ADMIN_ID:
+            await start_command(update, context)
+        else:
+            await update.message.reply_text(
+                "🔗 Deep Link မှ ကြိုဆိုပါတယ်။\n"
+                "ကျေးဇူးပြုပြီး တရားဝင် Link ကို သုံးပါ။"
+            )
+        return
+    
+    link_id = args[0]
+    deep_link = f"https://t.me/{context.bot.username}?start={link_id}"
+    
+    # Database ကနေ ရှာမယ်
+    file_data = get_file_by_deep_link(deep_link)
+    
+    if not file_data:
+        await update.message.reply_text(
+            "❌ ဒီ Link အတွက် ဖိုင်ကို ရှာမတွေ့ပါ။\n"
+            "Link က သက်တမ်းကုန်သွားတာ (သို့) မှားနေတာ ဖြစ်နိုင်ပါတယ်။"
+        )
+        return
+    
+    file_id = file_data.get("file_id")
+    file_name = file_data.get("file_name", "File")
+    caption = file_data.get("caption", "")
+    file_type = file_data.get("file_type", "")
+    
+    try:
+        if file_type == "Video":
+            await update.message.reply_video(
+                video=file_id,
+                caption=f"🎬 **{file_name}**\n\n📝 {caption}"
+            )
+        elif file_type == "Document":
+            await update.message.reply_document(
+                document=file_id,
+                caption=f"📄 **{file_name}**\n\n📝 {caption}"
+            )
+        elif file_type == "Audio":
+            await update.message.reply_audio(
+                audio=file_id,
+                caption=f"🎵 **{file_name}**\n\n📝 {caption}"
+            )
+        elif file_type == "Photo":
+            await update.message.reply_photo(
+                photo=file_id,
+                caption=f"🖼️ **{file_name}**\n\n📝 {caption}"
+            )
+        else:
+            await update.message.reply_document(
+                document=file_id,
+                caption=f"📁 **{file_name}**\n\n📝 {caption}"
+            )
+    except Exception as e:
+        await update.message.reply_text(f"❌ ဖိုင်ကို ပြန်ပို့ရာမှာ အမှားရှိသွားတယ်: {e}")
+
 # ---- Main ----
 def main():
+    global BOT_USERNAME
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+    BOT_USERNAME = None
     
-    app.add_handler(CommandHandler("start", start_command))
+    # Commands
+    app.add_handler(CommandHandler("start", deep_link_handler))  # Deep Link အတွက် (သုံးစွဲသူ)
     app.add_handler(CommandHandler("post", post_command))
     app.add_handler(CommandHandler("done", done_command))
     app.add_handler(CommandHandler("cancel", cancel_command))
     
+    # Season Commands (/1, /2, /3 ...)
     for i in range(1, 21):
         app.add_handler(CommandHandler(str(i), season_command))
     
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    # Handlers
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo_button_creator))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_button_creator))
+    app.add_handler(MessageHandler(
+        filters.Document.ALL | filters.VIDEO | filters.AUDIO | filters.PHOTO,
+        handle_file_deep_link
+    ))
     
     port = int(os.environ.get("PORT", 10000))
     logger.info(f"Starting webhook on port {port}")
