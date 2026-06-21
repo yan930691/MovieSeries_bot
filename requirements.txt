@@ -2,4 +2,4 @@ python-telegram-bot[job-queue,webhooks]==22.4
 pymongo==4.11.2
 flask==3.0.0
 python-dotenv==1.0.0
-aiohttp==3.9.3
+requests==2.31.0
