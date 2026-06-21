@@ -1,14 +1,13 @@
 import os
 import logging
 import secrets
+import requests
 from datetime import datetime
 from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.helpers import create_deep_linked_url
 from pymongo import MongoClient
-import aiohttp
-import asyncio
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,22 +42,21 @@ def get_file(payload):
 def generate_payload():
     return secrets.token_urlsafe(12)
 
-# ---------- Telegraph ----------
-async def create_telegraph_page(title, content):
+# ---------- Telegraph (requests နဲ့) ----------
+def create_telegraph_page(title, content):
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api.telegra.ph/createPage",
-                json={
-                    "access_token": os.environ.get("TELEGRAPH_TOKEN", ""),
-                    "title": title,
-                    "content": f"<p>{content.replace(chr(10), '<br>')}</p>",
-                    "author_name": "Movie Bot"
-                }
-            ) as response:
-                data = await response.json()
-                if data.get("ok"):
-                    return data["result"]["url"]
+        response = requests.post(
+            "https://api.telegra.ph/createPage",
+            json={
+                "access_token": os.environ.get("TELEGRAPH_TOKEN", ""),
+                "title": title,
+                "content": f"<p>{content.replace(chr(10), '<br>')}</p>",
+                "author_name": "Movie Bot"
+            }
+        )
+        data = response.json()
+        if data.get("ok"):
+            return data["result"]["url"]
     except Exception as e:
         logger.error(f"Telegraph error: {e}")
     return None
@@ -173,7 +171,10 @@ telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(CommandHandler("post", post_command))
-telegram_app.add_handler(MessageHandler(filters.VIDEO | filters.Document.ALL | filters.PHOTO, handle_file))
+telegram_app.add_handler(MessageHandler(
+    filters.VIDEO | filters.Document.ALL | filters.PHOTO, 
+    handle_file
+))
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
