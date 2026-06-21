@@ -3,17 +3,16 @@ import re
 def parse_season_episode(caption):
     """
     Caption ထဲက Season နဲ့ Episode ကို ထုတ်ယူပါ
-    ပုံစံများ: S01E01, s1e1, Season 1 Episode 1, 1x01, အစရှိသဖြင့်
     """
     if not caption:
         return None, None
     
     patterns = [
-        r'(?:S|Season)\s*(\d+)\s*(?:E|Episode)\s*(\d+)',  # Season 1 Episode 1, S01E01
-        r's(\d+)e(\d+)',                                  # s1e1, s01e01
-        r'(\d+)x(\d+)',                                   # 1x01
-        r'Episode\s*(\d+)',                               # Episode 1
-        r'E(\d+)',                                        # E1
+        r'(?:S|Season)\s*(\d+)\s*(?:E|Episode)\s*(\d+)',
+        r's(\d+)e(\d+)',
+        r'(\d+)x(\d+)',
+        r'Episode\s*(\d+)',
+        r'E(\d+)',
     ]
     
     for pattern in patterns:
@@ -45,14 +44,25 @@ def extract_movie_title(caption):
     # Year ကို ဖယ်ရှားမယ် (2002)
     cleaned = re.sub(r'\(\d{4}\)', '', cleaned)
     
-    # Quality ကို ဖယ်ရှားမယ် (1080p, 720p, 4K, MPK, MKV, MP4, x264, x265)
+    # Quality နဲ့ Format တွေကို ဖယ်ရှားမယ်
     cleaned = re.sub(r'\b\d{3,4}p\b', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\b(MPK|MKV|MP4|AVI|x264|x265|HEVC|H\.264|H\.265)\b', '', cleaned, flags=re.IGNORECASE)
     
-    # နာမည်မဟုတ်တဲ့ စကားလုံးတွေကို ဖယ်ရှားမယ်
-    cleaned = re.sub(r'-\s*', ' ', cleaned)  # Dash ကို space ပြောင်း
-    cleaned = re.sub(r'\s+', ' ', cleaned)   # နေရာလွတ်တွေကို စုစည်း
+    # Dash တွေကို Space ပြောင်းပြီး နေရာလွတ်တွေကို စုစည်းမယ်
+    cleaned = re.sub(r'-\s*', ' ', cleaned)
+    cleaned = re.sub(r'\s+', ' ', cleaned)
     cleaned = cleaned.strip()
+    
+    # နာမည်ကို ထုတ်ယူမယ် (ပထမဆုံး စကားလုံးအုပ်စု)
+    # ဥပမာ - "The Wire The Target" ဆိုရင် "The Wire" ပဲ ယူမယ်
+    parts = cleaned.split()
+    if len(parts) >= 2:
+        # "The" နဲ့စရင် ပထမ 2 လုံး (The Wire)
+        if parts[0].lower() == "the" and len(parts) >= 2:
+            return f"{parts[0]} {parts[1]}"
+        else:
+            # ပထမဆုံး 2 လုံးကို ယူမယ်
+            return " ".join(parts[:2])
     
     return cleaned or "Unknown Movie"
 
@@ -75,7 +85,7 @@ def extract_episode_name(caption):
     # Year ကို ဖယ်ရှားမယ်
     cleaned = re.sub(r'\(\d{4}\)', '', cleaned)
     
-    # Quality ကို ဖယ်ရှားမယ်
+    # Quality နဲ့ Format တွေကို ဖယ်ရှားမယ်
     cleaned = re.sub(r'\b\d{3,4}p\b', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\b(MPK|MKV|MP4|AVI|x264|x265|HEVC)\b', '', cleaned, flags=re.IGNORECASE)
     
@@ -84,12 +94,18 @@ def extract_episode_name(caption):
     cleaned = re.sub(r'\s+', ' ', cleaned)
     cleaned = cleaned.strip()
     
-    # Episode Name ကို ထုတ်ယူမယ် (နောက်ဆုံးအပိုင်း)
-    if cleaned and ' - ' in caption:
-        # Caption ထဲက နာမည်အတိုင်း ထားမယ်
-        return cleaned
+    # Episode Name ကို ထုတ်ယူမယ်
+    if cleaned:
+        # "The Wire The Target" ဆိုရင် "The Target" ကို ယူမယ်
+        parts = cleaned.split()
+        if len(parts) >= 3 and parts[0].lower() == "the" and parts[1].lower() == "wire":
+            # "The Wire" ဖယ်ပြီး ကျန်တာကို Episode Name အဖြစ်
+            return " ".join(parts[2:]) or "Episode"
+        elif len(parts) >= 2 and parts[0].lower() == "the":
+            # "The" နဲ့စပြီး နောက်ထပ် စကားလုံးတွေပါရင် အကုန်ယူမယ်
+            return " ".join(parts[1:]) or "Episode"
+        else:
+            # မဟုတ်ရင် အကုန်လုံးကို Episode Name အဖြစ်
+            return cleaned
     
-    # ဘာမှမရှိရင်
-    if not cleaned:
-        return "Episode"
-    return cleaned
+    return "Episode"
