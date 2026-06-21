@@ -312,16 +312,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # 🔥 စာသားထဲက Deep Link ကို ရှာမယ်
         url_match = re.search(r'https://t\.me/[^\s]+', text)
+        button_url = None
+        button_text = None
         
         if url_match:
             button_url = url_match.group(0)
-            
             # 🔥 စာသားထဲက Season/Episode နဲ့ Movie Name ကို ထုတ်ယူမယ်
             season, episode = extract_season_episode_from_caption(text)
             movie_title = extract_movie_title(text)
             
             if season and episode:
-                # မြန်မာလို ခလုတ်နာမည် ဖန်တီးမယ်
+                # 🔥 မြန်မာလို ခလုတ်နာမည် အပြည့်အစုံ ဖန်တီးမယ်
                 button_text = f"{movie_title} Season {season} Episode {episode} ရယူရန် နှိပ်ပါ"
             else:
                 button_text = f"Episode ရယူရန် နှိပ်ပါ"
@@ -346,12 +347,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 movie_title = extract_movie_title(text)
                 
                 if season and episode:
+                    # 🔥 မြန်မာလို ခလုတ်နာမည် အပြည့်အစုံ ဖန်တီးမယ်
                     button_text = f"{movie_title} Season {season} Episode {episode} ရယူရန် နှိပ်ပါ"
                 else:
                     button_text = f"Episode ရယူရန် နှိပ်ပါ"
         
         # URL မှန်မမှန် စစ်မယ်
-        if not button_url.startswith('https://t.me/'):
+        if not button_url or not button_url.startswith('https://t.me/'):
             await update.message.reply_text("⚠️ URL က `https://t.me/...` နဲ့ စရမယ်။")
             return
         
@@ -388,7 +390,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📌 `/done` - Post တင်ရန်\n"
         "📌 `/cancel` - ဖျက်ရန်"
     )
-
 # ---- Main ----
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
