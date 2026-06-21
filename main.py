@@ -151,7 +151,11 @@ telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(CommandHandler("post", post_command))
-telegram_app.add_handler(MessageHandler(filters.VIDEO | filters.DOCUMENT | filters.PHOTO, handle_file))
+# ✅ filters.DOCUMENT ကို filters.Document.ALL လို့ ပြောင်းထားတယ်
+telegram_app.add_handler(MessageHandler(
+    filters.VIDEO | filters.Document.ALL | filters.PHOTO, 
+    handle_file
+))
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
