@@ -5,68 +5,25 @@ from datetime import datetime
 client = MongoClient(MONGODB_URI)
 db = client[DB_NAME]
 
-files_col = db["movie_files"]
-posts_col = db["movie_posts"]
-sessions_col = db["admin_sessions"]
+posts_col = db["posts"]
 
-def save_video_file(file_id, movie_title, season, episode, caption):
-    data = {
-        "file_id": file_id,
-        "movie_title": movie_title,
-        "season": season,
-        "episode": episode,
-        "caption": caption
+def save_post_data(poster_file_id, caption, seasons_data, telegraph_url):
+    """
+    Post Data ကို သိမ်းမယ်
+    seasons_data = {
+        "1": [{"text": "S1E1", "url": "https://..."}, ...],
+        "2": [{"text": "S2E1", "url": "https://..."}, ...]
     }
-    return files_col.update_one(
-        {"movie_title": movie_title, "season": season, "episode": episode},
-        {"$set": data},
-        upsert=True
-    )
-
-def get_all_episodes(movie_title):
-    cursor = files_col.find({"movie_title": movie_title}).sort([("season", 1), ("episode", 1)])
-    return list(cursor)
-
-def get_video_by_season_episode(movie_title, season, episode):
-    return files_col.find_one({"movie_title": movie_title, "season": season, "episode": episode})
-
-def save_post_data(movie_title, poster_file_id, synopsis, telegraph_url, episodes_list):
+    """
     data = {
-        "movie_title": movie_title,
         "poster_file_id": poster_file_id,
-        "synopsis": synopsis,
+        "caption": caption,
+        "seasons": seasons_data,
         "telegraph_url": telegraph_url,
-        "episodes": episodes_list
+        "created_at": datetime.utcnow()
     }
-    posts_col.update_one(
-        {"movie_title": movie_title},
-        {"$set": data},
-        upsert=True
-    )
+    return posts_col.insert_one(data)
 
-def get_post_data(movie_title):
-    return posts_col.find_one({"movie_title": movie_title})
-
-# ---- Session Functions ----
-def get_admin_session(admin_id):
-    """Admin ရဲ့ Session Data ကို ယူမယ်"""
-    session = sessions_col.find_one({"admin_id": admin_id})
-    if not session:
-        return None
-    return session.get("data", {})
-
-def save_admin_session(admin_id, data):
-    """Admin ရဲ့ Session Data ကို သိမ်းမယ်"""
-    sessions_col.update_one(
-        {"admin_id": admin_id},
-        {"$set": {"data": data, "updated_at": datetime.utcnow()}},
-        upsert=True
-    )
-
-def clear_admin_session(admin_id):
-    """Admin ရဲ့ Session Data ကို ရှင်းမယ်"""
-    sessions_col.delete_one({"admin_id": admin_id})
-
-def delete_movie_videos(movie_title):
-    """Movie Title နဲ့ Video အကုန်ဖျက်မယ်"""
-    files_col.delete_many({"movie_title": movie_title})
+def get_latest_post():
+    """နောက်ဆုံး Post ကို ယူမယ် (အသုံးမပြုရသေးဘူး)"""
+    return posts_col.find_one(sort=[("_id", -1)])
