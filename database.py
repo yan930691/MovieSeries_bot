@@ -8,7 +8,6 @@ files_col = db["movie_files"]
 posts_col = db["movie_posts"]
 
 def save_video_file(file_id, movie_title, season, episode, caption):
-    """Video File တစ်ခုချင်းစီကို သိမ်းမယ်"""
     data = {
         "file_id": file_id,
         "movie_title": movie_title,
@@ -23,7 +22,6 @@ def save_video_file(file_id, movie_title, season, episode, caption):
     )
 
 def get_all_episodes(movie_title):
-    """Movie Title နဲ့ Episode အားလုံးကို ဆွဲယူမယ်"""
     cursor = files_col.find({"movie_title": movie_title}).sort([("season", 1), ("episode", 1)])
     return list(cursor)
 
@@ -46,7 +44,3 @@ def save_post_data(movie_title, poster_file_id, synopsis, telegraph_url, episode
 
 def get_post_data(movie_title):
     return posts_col.find_one({"movie_title": movie_title})
-
-def delete_movie_videos(movie_title):
-    """Movie Title နဲ့ Video အကုန်ဖျက်မယ် (ပြန်စချင်ရင်)"""
-    files_col.delete_many({"movie_title": movie_title})
