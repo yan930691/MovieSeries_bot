@@ -7,11 +7,32 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.helpers import create_deep_linked_url
 from pymongo import MongoClient
+from telegraph import Telegraph
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# ---------- Telegraph ----------
+telegraph = Telegraph()
+try:
+    telegraph.create_account(short_name="MoviePostBot")
+except:
+    pass
+
+async def create_telegraph_page(title, content):
+    try:
+        html = content.replace('\n', '<br>')
+        page = telegraph.create_page(
+            title=title,
+            html_content=f"<p>{html}</p>",
+            author_name="Movie Bot"
+        )
+        return page['url']
+    except Exception as e:
+        logger.error(f"Telegraph error: {e}")
+        return None
 
 # ---------- MongoDB ----------
 MONGO_URI = os.environ.get("MONGO_URI")
@@ -42,7 +63,6 @@ def generate_payload():
     return secrets.token_urlsafe(12)
 
 # ---------- Telegram Config ----------
-# 🔥 TELEGRAM_TOKEN ရော BOT_TOKEN ရော နှစ်ခုလုံး အလုပ်လုပ်မယ်
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN") or os.environ.get("BOT_TOKEN")
 if not TELEGRAM_TOKEN:
     logger.error("TELEGRAM_TOKEN not set")
@@ -66,9 +86,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not args:
         if is_admin(user_id):
-            await update.message.reply_text("🎬 Admin Panel\n\n/post - ပိုစတာဖန်တီးရန်")
+            await update.message.reply_text(
+                "🎬 **Admin Panel**\n\n"
+                "📌 **Commands:**\n"
+                "• `/post` - ပိုစတာဖန်တီးရန်\n"
+                "• ဖိုင် (Video/Document/Photo) ပို့ပါ → Deep Link ထုတ်ပေးမယ်\n"
+                "• ဇာတ်ညွှန်းရှည်ရင် Telegraph မှာ အလိုအလျောက်တင်ပေးမယ်"
+            )
         else:
-            await update.message.reply_text("🔗 Deep Link ကို နှိပ်ပါ။")
+            await update.message.reply_text(
+                "🔗 **Deep Link Generator Bot**\n\n"
+                "📌 ဒီ Bot က Admin က ဖိုင်တွေကို Deep Link ထုတ်ပေးတဲ့ Bot ဖြစ်ပါတယ်။\n\n"
+                "Admin က ဖိုင်ပို့လိုက်ရင် Deep Link ကို ရရှိမှာဖြစ်ပြီး\n"
+                "အဲဒီ Link ကို နှိပ်လိုက်ရင် ဖိုင်ကို ရယူနိုင်ပါတယ်။"
+            )
         return
     
     payload = args[0]
@@ -102,6 +133,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     file_obj = None
     file_name = None
+    caption = message.caption or ""
     
     if message.video:
         file_obj = message.video
@@ -115,6 +147,19 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         return
     
+    # ---- ဇာတ်ညွှန်းရှည်ရင် Telegraph မှာ တင်မယ် ----
+    telegraph_url = None
+    if caption and len(caption) > 1024:
+        await update.message.reply_text("⏳ ဇာတ်ညွှန်းရှည်နေပါသည်။ Telegraph စာမျက်နှာ ဖန်တီးနေပါပြီ...")
+        telegraph_url = await create_telegraph_page(f"Movie - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", caption)
+        if telegraph_url:
+            await update.message.reply_text(f"✅ Telegraph စာမျက်နှာ ဖန်တီးပြီးပါပြီ။\n{telegraph_url}")
+            caption_display = f"📖 ဇာတ်ညွှန်းအပြည့်အစုံ: {telegraph_url}"
+        else:
+            caption_display = caption[:1024] + "..."
+    else:
+        caption_display = caption or "No caption"
+    
     payload = generate_payload()
     save_file(payload, file_obj.file_id, file_name)
     deep_link = create_deep_linked_url(BOT_USERNAME, payload)
@@ -124,7 +169,9 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🔗 **Deep Link အဆင်သင့်ဖြစ်ပါပြီ။**\n\n"
         f"{deep_link}\n\n"
-        f"📁 {file_name}"
+        f"📁 **ဖိုင်အချက်အလက်:**\n"
+        f"📝 Caption: {caption_display}\n\n"
+        f"💡 ဒီ Link ကို နှိပ်လိုက်ရင် ဖိုင်ကို ရယူနိုင်ပါတယ်။"
     )
 
 # ---------- Admin Commands ----------
@@ -135,10 +182,12 @@ async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "🎬 **Post Creator**\n\n"
+        "📌 **ညွှန်ကြားချက်:**\n"
         "1️⃣ ပိုစတာ (ပုံ) ပို့ပါ။\n"
         "2️⃣ ဇာတ်ညွှန်း (စာသား) ပို့ပါ။\n"
         "3️⃣ ရုပ်ရှင်ဖိုင် (Video) ပို့ပါ။\n\n"
-        "Bot က Deep Link ကို အလိုအလျောက် ထုတ်ပေးမယ်။"
+        "✅ ဇာတ်ညွှန်းရှည်ရင် Telegraph မှာ အလိုအလျောက် တင်ပေးမယ်။\n"
+        "✅ Bot က Deep Link ကို အလိုအလျောက် ထုတ်ပေးမယ်။"
     )
 
 # ---------- Flask Webhook ----------
@@ -151,9 +200,8 @@ telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(CommandHandler("post", post_command))
-# ✅ filters.DOCUMENT ကို filters.Document.ALL လို့ ပြောင်းထားတယ်
 telegram_app.add_handler(MessageHandler(
-    filters.VIDEO | filters.Document.ALL | filters.PHOTO, 
+    filters.VIDEO | filters.Document.ALL | filters.PHOTO,
     handle_file
 ))
 
