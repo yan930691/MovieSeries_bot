@@ -3,13 +3,16 @@ import logging
 import secrets
 import requests
 from datetime import datetime
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.helpers import create_deep_linked_url
 from pymongo import MongoClient
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -76,7 +79,9 @@ ADMIN_IDS = [int(x.strip()) for x in os.environ.get("ADMIN_ID", "").split(",") i
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
-# ---------- Start Command ----------
+telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+# ---------- Telegram Handlers ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     args = context.args
@@ -114,7 +119,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error sending file: {e}")
         await update.message.reply_text(f"❌ ဖိုင်ပို့ရာတွင် အမှားရှိသည်: {e}")
 
-# ---------- File Upload ----------
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -148,7 +152,6 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📁 {file_name}"
     )
 
-# ---------- Post Creator ----------
 async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("⛔ အဒ်မင်များသာ အသုံးပြုနိုင်ပါသည်။")
@@ -163,25 +166,15 @@ async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Bot က Deep Link ကို အလိုအလျောက် ထုတ်ပေးမယ်။"
     )
 
-# ---------- Flask Webhook ----------
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
-if not WEBHOOK_URL:
-    logger.error("WEBHOOK_URL not set")
-    exit(1)
+# ---------- Flask Routes ----------
+@app.route('/', methods=['GET'])
+def health_check():
+    return "Bot is running!", 200
 
-telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
-
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(CommandHandler("post", post_command))
-telegram_app.add_handler(MessageHandler(
-    filters.VIDEO | filters.Document.ALL | filters.PHOTO, 
-    handle_file
-))
-
-# 🔥 Webhook ကို စစ်ဆေးဖို့ Route
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
+        logger.info("Webhook received")
         data = request.get_json(force=True)
         update = Update.de_json(data, telegram_app.bot)
         telegram_app.process_update(update)
@@ -189,11 +182,6 @@ def webhook():
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return "error", 500
-
-# 🔥 Health Check Route
-@app.route('/', methods=['GET'])
-def health_check():
-    return "Bot is running!", 200
 
 # ---------- Main ----------
 if __name__ == "__main__":
