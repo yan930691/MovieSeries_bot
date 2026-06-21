@@ -6,6 +6,7 @@ db = client[DB_NAME]
 
 files_col = db["movie_files"]
 posts_col = db["movie_posts"]
+sessions_col = db["sessions"]  # Session data အတွက်
 
 def save_video_file(file_id, movie_title, season, episode, caption):
     data = {
@@ -44,3 +45,23 @@ def save_post_data(movie_title, poster_file_id, synopsis, telegraph_url, episode
 
 def get_post_data(movie_title):
     return posts_col.find_one({"movie_title": movie_title})
+
+# ---- Session အတွက် ----
+def save_session(chat_id, data):
+    """Session data ကို DB မှာ သိမ်းမယ်"""
+    sessions_col.update_one(
+        {"chat_id": chat_id},
+        {"$set": {"chat_id": chat_id, "data": data}},
+        upsert=True
+    )
+
+def get_session(chat_id):
+    """Session data ကို DB ကနေ ဆွဲထုတ်မယ်"""
+    session = sessions_col.find_one({"chat_id": chat_id})
+    if session:
+        return session.get("data", {})
+    return {}
+
+def delete_session(chat_id):
+    """Session data ကို DB ကနေ ဖျက်မယ်"""
+    sessions_col.delete_one({"chat_id": chat_id})
