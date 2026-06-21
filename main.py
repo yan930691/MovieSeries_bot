@@ -42,8 +42,8 @@ def generate_payload():
     return secrets.token_urlsafe(12)
 
 # ---------- Telegram Config ----------
-OKEN = os.environ.get("TELEGRAM_TOKEN") or os.environ.get("BOT_TOKEN")
-if not TOKEN:
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")  # ✅ TOKEN ကို TELEGRAM_TOKEN လို့ သတ်မှတ်
+if not TELEGRAM_TOKEN:
     logger.error("TELEGRAM_TOKEN not set")
     exit(1)
 
@@ -146,7 +146,7 @@ if not WEBHOOK_URL:
     logger.error("WEBHOOK_URL not set")
     exit(1)
 
-telegram_app = Application.builder().token(TOKEN).build()
+telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(CommandHandler("post", post_command))
