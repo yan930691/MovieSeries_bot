@@ -45,14 +45,17 @@ def extract_movie_title(caption):
     cleaned = re.sub(r'\b\d{3,4}p\b', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\b(MPK|MKV|MP4|AVI|x264|x265|HEVC)\b', '', cleaned, flags=re.IGNORECASE)
     
-    # 🔥 နာမည်ကို သေချာသန့်ရှင်းအောင်လုပ်မယ်
+    # အပိုစာသားတွေကို ဖယ်ရှားမယ်
+    cleaned = re.sub(r'-\s*', ' ', cleaned)
     cleaned = re.sub(r'\s+', ' ', cleaned)
     cleaned = cleaned.strip()
     
-    # 🔥 "The Wire" လိုမျိုး အတိအကျ ထုတ်ယူမယ်
-    if cleaned:
-        return cleaned
-    return "Movie"
+    # "The" နဲ့စတဲ့ ဇာတ်ကားနာမည်တွေကို ထုတ်ယူမယ်
+    match = re.match(r'(The\s+\w+)', cleaned, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    
+    return cleaned or "Movie"
 
 # ---- Command Handlers ----
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,7 +121,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="📖 ဇာတ်ညွှန်းအပြည့်အစုံဖတ်ရန်",
                 url=telegraph_url
             )
-            caption_display = ""
+            caption_display = ""  # စာတန်း မပါတော့ဘူး
         else:
             caption_display = caption_text[:1024] + "..."
     else:
@@ -127,13 +130,18 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         keyboard = []
         
+        # Telegraph Button ရှိရင် ထည့်မယ်
         if telegraph_button:
             keyboard.append([telegraph_button])
         
+        # Season အလိုက် ခလုတ်တွေကို စီစဉ်မယ်
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
+            
+            # Episode Number အလိုက် စီမယ်
             season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
             
+            # Season Header
             keyboard.append([InlineKeyboardButton(f"🎬 Season {season_num} (Episodes: {len(season_links_sorted)})", callback_data="none")])
             
             for link_data in season_links_sorted:
@@ -143,11 +151,13 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
+        # Post Caption ဆောက်မယ်
         if caption_display:
             final_caption = f"🎬 **{caption_display}**\n\n📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
         else:
             final_caption = f"📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
         
+        # Admin ကိုပဲ ပို့မယ်
         await update.message.reply_photo(
             photo=poster,
             caption=final_caption,
@@ -292,8 +302,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # 🔥 စာသားထဲက Deep Link ကို ရှာမယ်
         url_match = re.search(r'https://t\.me/[^\s]+', text)
-        button_url = None
-        button_text = None
         
         if url_match:
             button_url = url_match.group(0)
@@ -303,7 +311,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             movie_title = extract_movie_title(text)
             
             if season and episode:
-                # 🔥 ခလုတ်နာမည် ဖန်တီးမယ်
+                # 🔥 မြန်မာလို ခလုတ်နာမည် အပြည့်အစုံ ဖန်တီးမယ်
                 button_text = f"{movie_title} Season {season} Episode {episode} ရယူရန် နှိပ်ပါ"
             else:
                 button_text = f"Episode ရယူရန် နှိပ်ပါ"
@@ -328,6 +336,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 movie_title = extract_movie_title(text)
                 
                 if season and episode:
+                    # 🔥 မြန်မာလို ခလုတ်နာမည် အပြည့်အစုံ ဖန်တီးမယ်
                     button_text = f"{movie_title} Season {season} Episode {episode} ရယူရန် နှိပ်ပါ"
                 else:
                     button_text = f"Episode ရယူရန် နှိပ်ပါ"
