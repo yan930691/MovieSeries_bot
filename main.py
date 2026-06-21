@@ -42,7 +42,8 @@ def generate_payload():
     return secrets.token_urlsafe(12)
 
 # ---------- Telegram Config ----------
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")  # ✅ TOKEN ကို TELEGRAM_TOKEN လို့ သတ်မှတ်
+# 🔥 TELEGRAM_TOKEN ရော BOT_TOKEN ရော နှစ်ခုလုံး အလုပ်လုပ်မယ်
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN") or os.environ.get("BOT_TOKEN")
 if not TELEGRAM_TOKEN:
     logger.error("TELEGRAM_TOKEN not set")
     exit(1)
