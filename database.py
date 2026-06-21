@@ -5,22 +5,7 @@ from datetime import datetime
 client = MongoClient(MONGODB_URI, tls=True, tlsAllowInvalidCertificates=True)
 db = client[DB_NAME]
 
-posts_col = db["posts"]
 files_col = db["files"]  # Deep Link အတွက် ဖိုင်တွေသိမ်းမယ်
-
-def save_post_data(poster_file_id, caption, seasons_data, telegraph_url):
-    data = {
-        "poster_file_id": poster_file_id,
-        "caption": caption,
-        "seasons": seasons_data,
-        "telegraph_url": telegraph_url,
-        "created_at": datetime.utcnow()
-    }
-    return posts_col.insert_one(data)
-
-def get_all_posts(limit=10):
-    cursor = posts_col.find().sort("created_at", -1).limit(limit)
-    return list(cursor)
 
 def save_file_data(file_id, file_name, caption, deep_link, file_type):
     """Deep Link အတွက် ဖိုင်ဒေတာကို သိမ်းမယ်"""
