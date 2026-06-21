@@ -1,40 +1,19 @@
 import os
 import logging
 import secrets
-import asyncio
 from datetime import datetime
 from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.helpers import create_deep_linked_url
 from pymongo import MongoClient
-from telegraph import Telegraph
+import asyncio
+import aiohttp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-
-# ---------- Telegraph ----------
-telegraph = Telegraph()
-try:
-    telegraph.create_account(short_name="MovieBot")
-except:
-    pass
-
-async def create_telegraph_page(title, content):
-    try:
-        html = content.replace('\n', '<br>')
-        page = await asyncio.to_thread(
-            telegraph.create_page,
-            title=title,
-            html_content=f"<p>{html}</p>",
-            author_name="Movie Bot"
-        )
-        return page['url']
-    except Exception as e:
-        logger.error(f"Telegraph error: {e}")
-        return None
 
 # ---------- MongoDB ----------
 MONGO_URI = os.environ.get("MONGO_URI")
@@ -64,6 +43,26 @@ def get_file(payload):
 def generate_payload():
     return secrets.token_urlsafe(12)
 
+# ---------- Telegraph ----------
+async def create_telegraph_page(title, content):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.telegra.ph/createPage",
+                json={
+                    "access_token": os.environ.get("TELEGRAPH_TOKEN", ""),
+                    "title": title,
+                    "content": f"<p>{content.replace(chr(10), '<br>')}</p>",
+                    "author_name": "Movie Bot"
+                }
+            ) as response:
+                data = await response.json()
+                if data.get("ok"):
+                    return data["result"]["url"]
+    except Exception as e:
+        logger.error(f"Telegraph error: {e}")
+    return None
+
 # ---------- Telegram Config ----------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN") or os.environ.get("BOT_TOKEN")
 if not TELEGRAM_TOKEN:
@@ -79,29 +78,20 @@ ADMIN_IDS = [int(x.strip()) for x in os.environ.get("ADMIN_ID", "").split(",") i
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
-# ---------- Start Command (Deep Link Handler) ----------
+# ---------- Start Command ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     args = context.args
-    
-    logger.info(f"Start from {user_id}, args: {args}")
     
     if not args:
         if is_admin(user_id):
             await update.message.reply_text(
                 "🎬 **Admin Panel**\n\n"
-                "📌 **Commands:**\n"
-                "• `/post` - Post ဖန်တီးရန်\n"
-                "• `/post_text` - ဇာတ်ညွှန်းပါ Post ဖန်တီးရန်\n"
-                "• `/stats` - စာရင်းအင်းကြည့်ရန်\n"
-                "• `/broadcast` - သုံးစွဲသူအားလုံးသို့ စာပို့ရန်"
+                "/post - ပိုစတာဖန်တီးရန်\n"
+                "📝 ဇာတ်ညွှန်းရှည်ရင် Telegraph မှာ တင်ပေးမယ်"
             )
         else:
-            await update.message.reply_text(
-                "🔗 **Deep Link Generator Bot**\n\n"
-                "ဒီ Bot က ဖိုင်တွေအတွက် Deep Link ထုတ်ပေးတဲ့ Bot ဖြစ်ပါတယ်။\n"
-                "အဒ်မင်က ဖိုင်ပို့လိုက်ရင် Deep Link ကို ချက်ချင်းရမှာပါ။"
-            )
+            await update.message.reply_text("🔗 Deep Link ကို နှိပ်ပါ။")
         return
     
     payload = args[0]
@@ -124,7 +114,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error sending file: {e}")
         await update.message.reply_text(f"❌ ဖိုင်ပို့ရာတွင် အမှားရှိသည်: {e}")
 
-# ---------- File Upload Handler ----------
+# ---------- File Upload ----------
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -152,15 +142,13 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_file(payload, file_obj.file_id, file_name)
     deep_link = create_deep_linked_url(BOT_USERNAME, payload)
     
-    logger.info(f"✅ Deep Link created: {deep_link}")
-    
     await update.message.reply_text(
         f"🔗 **Deep Link အဆင်သင့်ဖြစ်ပါပြီ။**\n\n"
         f"{deep_link}\n\n"
         f"📁 {file_name}"
     )
 
-# ---------- Post Creator (with Telegraph) ----------
+# ---------- Post Creator ----------
 async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("⛔ အဒ်မင်များသာ အသုံးပြုနိုင်ပါသည်။")
@@ -170,21 +158,9 @@ async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎬 **Post Creator**\n\n"
         "1️⃣ ပိုစတာ (ပုံ) ပို့ပါ။\n"
         "2️⃣ ဇာတ်ညွှန်း (စာသား) ပို့ပါ။\n"
+        "   - စာသားရှည်ရင် Telegraph မှာ တင်ပေးမယ်\n"
         "3️⃣ ရုပ်ရှင်ဖိုင် (Video) ပို့ပါ။\n\n"
         "Bot က Deep Link ကို အလိုအလျောက် ထုတ်ပေးမယ်။"
-    )
-
-async def post_text_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ အဒ်မင်များသာ အသုံးပြုနိုင်ပါသည်။")
-        return
-    
-    await update.message.reply_text(
-        "📝 **Post with Synopsis**\n\n"
-        "1️⃣ ပိုစတာ (ပုံ) ပို့ပါ။\n"
-        "2️⃣ ဇာတ်ညွှန်း (စာသား) ပို့ပါ။\n"
-        "3️⃣ ရုပ်ရှင်ဖိုင် (Video) ပို့ပါ။\n\n"
-        "ဇာတ်ညွှန်းရှည်ရင် Telegraph မှာ အလိုအလျောက် တင်ပေးမယ်။"
     )
 
 # ---------- Flask Webhook ----------
@@ -197,7 +173,6 @@ telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(CommandHandler("post", post_command))
-telegram_app.add_handler(CommandHandler("post_text", post_text_command))
 telegram_app.add_handler(MessageHandler(filters.VIDEO | filters.Document.ALL | filters.PHOTO, handle_file))
 
 @app.route('/webhook', methods=['POST'])
