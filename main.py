@@ -70,6 +70,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
         return
     
+    clear_admin_session(user_id)
     context.user_data.clear()
     await update.message.reply_text("✅ လုပ်ဆောင်နေတာကို ဖျက်လိုက်ပါပြီ။")
 
@@ -79,22 +80,26 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
         return
     
-    movie_title = context.user_data.get('temp_movie')
-    poster_file_id = context.user_data.get('temp_poster')
-    synopsis = context.user_data.get('temp_synopsis')
+    # Session Data ကို DB ကနေ ယူမယ်
+    session_data = get_admin_session(user_id)
+    if not session_data:
+        await update.message.reply_text("⚠️ Session Data မတွေ့ပါ။ ကျေးဇူးပြုပြီး Poster, Synopsis, Video တွေ ပြန်ပို့ပါ။")
+        return
+    
+    movie_title = session_data.get('temp_movie')
+    poster_file_id = session_data.get('temp_poster')
+    synopsis = session_data.get('temp_synopsis')
+    videos = session_data.get('temp_videos', [])
     
     if not movie_title or not poster_file_id or not synopsis:
         await update.message.reply_text("⚠️ Poster, Synopsis, Video တွေ အရင်ပို့ပါ။")
         return
     
-    # DB ကနေ Video အကုန်ယူမယ်
-    episodes = get_all_episodes(movie_title)
-    
-    if not episodes:
-        await update.message.reply_text("⚠️ ဒီ Movie အတွက် Video မတွေ့ပါ။ Video တွေပြန်ပို့ပါ။")
+    if not videos:
+        await update.message.reply_text("⚠️ အနည်းဆုံး တစ်ပုဒ်တော့ Video ပိုပေးပါ။")
         return
     
-    await update.message.reply_text(f"⏳ Post ဆောက်နေပါတယ်... (Videos: {len(episodes)})")
+    await update.message.reply_text(f"⏳ Post ဆောက်နေပါတယ်... (Videos: {len(videos)})")
     
     # ---- Telegraph ----
     telegraph_url = None
@@ -120,14 +125,11 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if telegraph_button:
                 keyboard.append([telegraph_button])
             
-            for ep in episodes:
+            for ep in videos:
                 safe_title = movie_title.replace(" ", "_")
                 deep_link = f"https://t.me/{context.bot.username}?start={safe_title}_{ep['season']}_{ep['episode']}"
-                
-                ep_name = extract_episode_name(ep['caption']) or f"Episode {ep['episode']}"
-                
                 button = InlineKeyboardButton(
-                    text=ep_name,
+                    text=ep['caption'],
                     url=deep_link
                 )
                 keyboard.append([button])
@@ -144,7 +146,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown'
             )
             
-            episodes_list = [{"season": ep['season'], "episode": ep['episode']} for ep in episodes]
+            episodes_list = [{"season": ep['season'], "episode": ep['episode']} for ep in videos]
             save_post_data(movie_title, poster_file_id, synopsis, telegraph_url, episodes_list)
             
             await update.message.reply_text(f"✅ **Post ကို Channel ထဲမှာ အောင်မြင်စွာ တင်လိုက်ပါပြီ။**")
@@ -155,6 +157,8 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("ℹ️ CHANNEL_ID မထည့်ထားလို့ Post ကို ဒီမှာပဲ ပြပေးလိုက်မယ်။")
         await update.message.reply_text(f"🎬 {movie_title}\n\n{synopsis_display[:200]}...")
     
+    # Session ကို ရှင်းမယ်
+    clear_admin_session(user_id)
     context.user_data.clear()
 
 # ---- Admin Handlers ----
@@ -164,7 +168,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     photo = update.message.photo[-1]
-    context.user_data['temp_poster'] = photo.file_id
+    
+    # Session Data ကို DB မှာ သိမ်းမယ်
+    session_data = get_admin_session(user_id) or {}
+    session_data['temp_poster'] = photo.file_id
+    save_admin_session(user_id, session_data)
     
     await update.message.reply_text("✅ ပိုစတာ သိမ်းဆည်းပြီးပါပြီ။ ဇာတ်ညွှန်း (စာသား) ကို ပို့ပါ။")
 
@@ -173,12 +181,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id != ADMIN_ID:
         return
     
-    if not context.user_data.get('temp_poster'):
+    session_data = get_admin_session(user_id) or {}
+    
+    if not session_data.get('temp_poster'):
         await update.message.reply_text("⚠️ Poster အရင်ပို့ပါ။")
         return
     
     synopsis = update.message.text
-    context.user_data['temp_synopsis'] = synopsis
+    session_data['temp_synopsis'] = synopsis
+    save_admin_session(user_id, session_data)
     
     await update.message.reply_text(
         "✅ ဇာတ်ညွှန်း သိမ်းဆည်းပြီးပါပြီ။\n\n"
@@ -193,7 +204,9 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
         return
     
-    if not context.user_data.get('temp_poster') or not context.user_data.get('temp_synopsis'):
+    session_data = get_admin_session(user_id) or {}
+    
+    if not session_data.get('temp_poster') or not session_data.get('temp_synopsis'):
         await update.message.reply_text("⚠️ Poster နဲ့ Synopsis အရင်ပို့ပါ။")
         return
     
@@ -203,32 +216,50 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = update.message.video
     caption = update.message.caption or ""
     
+    # Season/Episode ကို ထုတ်ယူမယ်
     season, episode = parse_season_episode(caption)
     if not season or not episode:
-        await update.message.reply_text("⚠️ Caption ထဲမှာ `S01E01` ထည့်ပေးပါ။")
+        await update.message.reply_text("⚠️ Caption ထဲမှာ `S01E01` (သို့) `s1e1` ထည့်ပေးပါ။")
         return
     
     movie_title = extract_movie_title(caption)
+    episode_name = extract_episode_name(caption)
     
-    if 'temp_movie' not in context.user_data:
-        context.user_data['temp_movie'] = movie_title
-    elif context.user_data['temp_movie'] != movie_title:
+    # Movie Title ကို သိမ်းမယ်
+    if 'temp_movie' not in session_data:
+        session_data['temp_movie'] = movie_title
+    elif session_data['temp_movie'] != movie_title:
         await update.message.reply_text(
             f"ℹ️ Movie Title ပြောင်းသွားပါတယ်။\n"
-            f"အဟောင်း: `{context.user_data['temp_movie']}`\n"
+            f"အဟောင်း: `{session_data['temp_movie']}`\n"
             f"အသစ်: `{movie_title}`\n\n"
             f"ဒီ Title အသစ်အတွက် ဆက်သိမ်းမယ်။"
         )
-        context.user_data['temp_movie'] = movie_title
+        session_data['temp_movie'] = movie_title
     
+    # Video ကို DB မှာ သိမ်းမယ်
     save_video_file(video.file_id, movie_title, season, episode, caption)
     
-    total = len(get_all_episodes(movie_title))
+    # Video ကို List ထဲ သိမ်းမယ်
+    if 'temp_videos' not in session_data:
+        session_data['temp_videos'] = []
     
+    session_data['temp_videos'].append({
+        'file_id': video.file_id,
+        'season': season,
+        'episode': episode,
+        'caption': episode_name or f"Episode {episode}"
+    })
+    
+    # Session Data ကို DB မှာ သိမ်းမယ်
+    save_admin_session(user_id, session_data)
+    
+    total = len(session_data['temp_videos'])
     await update.message.reply_text(
         f"✅ Video #{total} သိမ်းဆည်းပြီးပါပြီ။\n"
         f"🎬 {movie_title}\n"
-        f"📺 Season {season} Episode {episode}\n\n"
+        f"📺 Season {season} Episode {episode}\n"
+        f"📝 {episode_name}\n\n"
         f"✅ ဆက်ပို့နိုင်ပါတယ်။ အကုန်ပြီးရင် `/done` နှိပ်ပါ။"
     )
 
