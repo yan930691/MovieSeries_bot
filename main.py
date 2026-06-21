@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # ---- Helper Functions ----
 def extract_season_episode_from_caption(caption):
-    """Caption ထဲက S01E03 ကို ထုတ်ယူမယ်"""
+    """Caption ထဲက S01E03 ကို ထုတ်ယူမယ် (URL ထဲကပါ ဖတ်မယ်)"""
     if not caption:
         return None, None
     
@@ -19,6 +19,7 @@ def extract_season_episode_from_caption(caption):
         r'(?:S|Season)\s*(\d+)\s*(?:E|Episode)\s*(\d+)',
         r's(\d+)e(\d+)',
         r'(\d+)x(\d+)',
+        r'[_-]?s(\d+)[_-]?e(\d+)',  # s1e1, s01e01, s1-e1, s1_e1
     ]
     
     for pattern in patterns:
@@ -29,12 +30,15 @@ def extract_season_episode_from_caption(caption):
     return None, None
 
 def extract_movie_title(caption):
-    """Caption ထဲက ဇာတ်ကားနာမည်ကို ထုတ်ယူမယ်"""
+    """Caption ထဲက ဇာတ်ကားနာမည်ကို ထုတ်ယူမယ် (URL ထဲကပါ)"""
     if not caption:
         return "Movie"
     
+    # URL ထဲက start= ပါတဲ့အပိုင်းကို ဖယ်ရှားမယ်
+    cleaned = re.sub(r'https?://[^\s]+', '', caption)
+    
     # Season/Episode ဖော်ပြချက်တွေကို ဖယ်ရှားမယ်
-    cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', caption, flags=re.IGNORECASE)
+    cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r's\d+e\d+', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\d+x\d+', '', cleaned)
     
@@ -293,41 +297,36 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if step and step.startswith('adding_links_season_'):
         season_num = step.replace('adding_links_season_', '')
         
-        # ---- ခင်ဗျားပို့တဲ့ပုံစံကို ကိုင်တွယ်မယ် ----
-        # ပုံစံ ၁: "နာမည်|https://t.me/..." (ခင်ဗျား သတ်မှတ်ချင်ရင်)
+        # 🔥 စာသားထဲက Deep Link ကို ရှာမယ် (အသစ်ထည့်တာ)
+        url_match = re.search(r'https://t\.me/[^\s]+', text)
+        
+        if url_match:
+            button_url = url_match.group(0)  # URL ကို ယူမယ်
+        else:
+            # URL မတွေ့ရင် သတိပေးမယ်
+            await update.message.reply_text(
+                "⚠️ Deep Link (https://t.me/...) ကို ရှာမတွေ့ပါ။\n\n"
+                "ပုံစံ: `https://t.me/Bot?start=xxx` (သို့) `နာမည်|https://t.me/Bot?start=xxx`"
+            )
+            return
+        
+        # ---- Button Text ကို ဖန်တီးမယ် ----
         if '|' in text:
+            # နာမည်|URL ပုံစံဆိုရင် နာမည်ကို ယူမယ်
             parts = text.split('|', 1)
             button_text = parts[0].strip()
-            button_url = parts[1].strip()
         else:
-            # ပုံစံ ၂: "https://t.me/..." (Bot က ကိုယ်တိုင်ဖန်တီးမယ်)
-            button_url = text
-            # URL မှန်မမှန် စစ်မယ်
-            if not button_url.startswith('https://t.me/'):
-                await update.message.reply_text(
-                    "⚠️ URL က `https://t.me/...` နဲ့ စရမယ်။\n\n"
-                    "ပုံစံ: `https://t.me/Bot?start=xxx` (သို့) `နာမည်|https://t.me/Bot?start=xxx`"
-                )
-                return
-            
-            # ---- Caption ကနေ Season/Episode ထုတ်ယူမယ် ----
-            # ခင်ဗျားရဲ့ မက်ဆေ့ချ်မှာ Caption ပါရင် သိမ်းထားတဲ့ Caption ကို သုံးမယ်
-            # ဒါပေမယ့် ခင်ဗျား ပို့တဲ့ မက်ဆေ့ချ်မှာ စာသားပါတယ်
-            # ဒီတော့ ဒီ text ကိုပဲ သုံးမယ်
+            # URL ပဲပါရင် Caption ကနေ ထုတ်ယူမယ်
             caption_text = text
-            
-            # Season/Episode ကို ထုတ်ယူမယ်
             season, episode = extract_season_episode_from_caption(caption_text)
             movie_title = extract_movie_title(caption_text)
             
             if season and episode:
-                # အလိုအလျောက် ခလုတ်နာမည် ဖန်တီးမယ်
                 button_text = f"{movie_title} S{season}E{episode} ရယူရန် နှိပ်ပါ"
             else:
-                # မတွေ့ရင် ရိုးရိုးနာမည် သုံးမယ်
                 button_text = f"Episode ရယူရန် နှိပ်ပါ"
         
-        # URL မှန်မမှန် ထပ်စစ်မယ်
+        # URL မှန်မမှန် စစ်မယ်
         if not button_url.startswith('https://t.me/'):
             await update.message.reply_text("⚠️ URL က `https://t.me/...` နဲ့ စရမယ်။")
             return
