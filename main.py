@@ -17,7 +17,7 @@ BOT_USERNAME = None
 def generate_deep_link(file_name, caption):
     """ဖိုင်နာမည်နဲ့ Caption ကိုကြည့်ပြီး Deep Link ထုတ်ပေးမယ်"""
     clean_name = re.sub(r'[^a-zA-Z0-9]', '_', file_name)[:30]
-    hash_id = hashlib.md5(f"{file_name}_{caption}_{datetime.utcnow().timestamp()}".encode()).hexdigest()[:12]
+    hash_id = hashlib.md5(f"{file_name}_{caption}_{datetime.utcnow().timestamp()}".encode()).hexdigest()[:16]
     return f"https://t.me/{BOT_USERNAME}?start={hash_id}"
 
 # ---- Commands ----
@@ -26,10 +26,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     args = context.args  # Deep Link ရဲ့ parameter ကို ယူမယ်
     
-    # ---- Deep Link ကနေ လာတာ ----
+    # ---- Deep Link ကနေ လာတာ (args ရှိရင်) ----
     if args:
         link_id = args[0]
         deep_link = f"https://t.me/{context.bot.username}?start={link_id}"
+        
+        logger.info(f"Deep Link clicked: {deep_link}")
         
         # Database ကနေ ရှာမယ်
         file_data = get_file_by_deep_link(deep_link)
