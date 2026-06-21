@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # ---- Helper Functions ----
 def extract_season_episode_from_caption(caption):
-    """Caption ထဲက S01E03 ကို ထုတ်ယူမယ် (URL ထဲကပါ ဖတ်မယ်)"""
+    """Caption ထဲက S01E03 ကို ထုတ်ယူမယ်"""
     if not caption:
         return None, None
     
@@ -19,7 +19,6 @@ def extract_season_episode_from_caption(caption):
         r'(?:S|Season)\s*(\d+)\s*(?:E|Episode)\s*(\d+)',
         r's(\d+)e(\d+)',
         r'(\d+)x(\d+)',
-        r'[_-]?s(\d+)[_-]?e(\d+)',  # s1e1, s01e01, s1-e1, s1_e1
     ]
     
     for pattern in patterns:
@@ -30,15 +29,12 @@ def extract_season_episode_from_caption(caption):
     return None, None
 
 def extract_movie_title(caption):
-    """Caption ထဲက ဇာတ်ကားနာမည်ကို ထုတ်ယူမယ် (URL ထဲကပါ)"""
+    """Caption ထဲက ဇာတ်ကားနာမည်ကို ထုတ်ယူမယ်"""
     if not caption:
         return "Movie"
     
-    # URL ထဲက start= ပါတဲ့အပိုင်းကို ဖယ်ရှားမယ်
-    cleaned = re.sub(r'https?://[^\s]+', '', caption)
-    
     # Season/Episode ဖော်ပြချက်တွေကို ဖယ်ရှားမယ်
-    cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', caption, flags=re.IGNORECASE)
     cleaned = re.sub(r's\d+e\d+', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\d+x\d+', '', cleaned)
     
@@ -53,6 +49,23 @@ def extract_movie_title(caption):
     cleaned = cleaned.strip()
     
     return cleaned or "Movie"
+
+def extract_episode_name(caption):
+    """Caption ထဲက Episode အမည်ကို ထုတ်ယူမယ် (ခလုတ်နာမည်အတွက်)"""
+    if not caption:
+        return "Episode"
+    
+    # Season/Episode ကို ဖယ်ပြီး ကျန်တာကို Episode Name အဖြစ်သတ်မှတ်
+    cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', caption, flags=re.IGNORECASE)
+    cleaned = re.sub(r's\d+e\d+', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\d+x\d+', '', cleaned)
+    cleaned = re.sub(r'\(\d{4}\)', '', cleaned)
+    cleaned = re.sub(r'\b\d{3,4}p\b', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\b(MPK|MKV|MP4|AVI|x264|x265|HEVC)\b', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\s+', ' ', cleaned)
+    cleaned = cleaned.strip()
+    
+    return cleaned or "Episode"
 
 # ---- Command Handlers ----
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -297,34 +310,47 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if step and step.startswith('adding_links_season_'):
         season_num = step.replace('adding_links_season_', '')
         
-        # 🔥 စာသားထဲက Deep Link ကို ရှာမယ် (အသစ်ထည့်တာ)
+        # 🔥 စာသားထဲက Deep Link ကို ရှာမယ်
         url_match = re.search(r'https://t\.me/[^\s]+', text)
         
         if url_match:
-            button_url = url_match.group(0)  # URL ကို ယူမယ်
-        else:
-            # URL မတွေ့ရင် သတိပေးမယ်
-            await update.message.reply_text(
-                "⚠️ Deep Link (https://t.me/...) ကို ရှာမတွေ့ပါ။\n\n"
-                "ပုံစံ: `https://t.me/Bot?start=xxx` (သို့) `နာမည်|https://t.me/Bot?start=xxx`"
-            )
-            return
-        
-        # ---- Button Text ကို ဖန်တီးမယ် ----
-        if '|' in text:
-            # နာမည်|URL ပုံစံဆိုရင် နာမည်ကို ယူမယ်
-            parts = text.split('|', 1)
-            button_text = parts[0].strip()
-        else:
-            # URL ပဲပါရင် Caption ကနေ ထုတ်ယူမယ်
-            caption_text = text
-            season, episode = extract_season_episode_from_caption(caption_text)
-            movie_title = extract_movie_title(caption_text)
+            button_url = url_match.group(0)  # https://t.me/... ကို ယူမယ်
+            
+            # 🔥 စာသားထဲက Season/Episode ကို ထုတ်ယူမယ်
+            # ဥပမာ - "The Wire (2002) - S01E12 - Cleaning Up 1080p MPK.mp4"
+            season, episode = extract_season_episode_from_caption(text)
+            movie_title = extract_movie_title(text)
+            episode_name = extract_episode_name(text)
             
             if season and episode:
-                button_text = f"{movie_title} S{season}E{episode} ရယူရန် နှိပ်ပါ"
+                # မြန်မာလို ခလုတ်နာမည် ဖန်တီးမယ်
+                button_text = f"{movie_title} Season {season} Episode {episode} ရယူရန် နှိပ်ပါ"
             else:
                 button_text = f"Episode ရယူရန် နှိပ်ပါ"
+        else:
+            # ပုံစံ ၁: "နာမည်|https://t.me/..." (ခင်ဗျား သတ်မှတ်ချင်ရင်)
+            if '|' in text:
+                parts = text.split('|', 1)
+                button_text = parts[0].strip()
+                button_url = parts[1].strip()
+            else:
+                # ပုံစံ ၂: "https://t.me/..." (Bot က ကိုယ်တိုင်ဖန်တီးမယ်)
+                button_url = text
+                if not button_url.startswith('https://t.me/'):
+                    await update.message.reply_text(
+                        "⚠️ URL က `https://t.me/...` နဲ့ စရမယ်။\n\n"
+                        "ပုံစံ: `https://t.me/Bot?start=xxx` (သို့) `နာမည်|https://t.me/Bot?start=xxx`"
+                    )
+                    return
+                
+                # Season/Episode ကို ထုတ်ယူမယ်
+                season, episode = extract_season_episode_from_caption(text)
+                movie_title = extract_movie_title(text)
+                
+                if season and episode:
+                    button_text = f"{movie_title} Season {season} Episode {episode} ရယူရန် နှိပ်ပါ"
+                else:
+                    button_text = f"Episode ရယူရန် နှိပ်ပါ"
         
         # URL မှန်မမှန် စစ်မယ်
         if not button_url.startswith('https://t.me/'):
@@ -339,7 +365,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['temp_seasons'][season_num] = []
         
         # Episode Number ကို သိမ်းမယ် (စီရန်)
-        _, ep_num = extract_season_episode_from_caption(button_url)
+        _, ep_num = extract_season_episode_from_caption(text)
         
         context.user_data['temp_seasons'][season_num].append({
             'text': button_text,
