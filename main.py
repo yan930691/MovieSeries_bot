@@ -28,7 +28,6 @@ async def schedule_deletion(context: ContextTypes.DEFAULT_TYPE, chat_id: int, me
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if args:
-        # Deep Link: movie_title_season_episode
         try:
             data = args[0].split('_')
             movie_title = data[0]
@@ -52,20 +51,17 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📌 **အက်ဒမင်အတွက် ညွှန်ကြားချက်:**\n"
             "1️⃣ ပိုစတာ (ပုံ) ကို ပို့ပါ။\n"
             "2️⃣ ဇာတ်ညွှန်း (စာသား) ကို ပို့ပါ။\n"
-            "3️⃣ Video တွေကို ဆက်တိုက်ပို့ပါ။ (Caption မှာ S01E01, s1e1, Season 1 Episode 1 စသဖြင့်)\n"
+            "3️⃣ Video တွေကို ဆက်တိုက်ပို့ပါ။\n"
             "4️⃣ Video အကုန်ပို့ပြီးရင် `/done` နှိပ်ပါ။"
         )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🆘 **အကူအညီ**\n\n"
-        "📌 **အက်ဒမင်အတွက်:**\n"
         "• `/start` - Bot ကိုစတင်ရန်\n"
         "• `/help` - အကူအညီ\n"
         "• `/done` - Video အကုန်ပို့ပြီးရင် Post ဆောက်ရန်\n"
-        "• `/cancel` - လုပ်နေတာကိုဖျက်ရန်\n\n"
-        "📝 **Video တင်နည်း**\n"
-        "Caption ထဲမှာ `S01E01`, `s1e1`, `Season 1 Episode 1` စသဖြင့် ထည့်ပေးပါ။"
+        "• `/cancel` - လုပ်နေတာကိုဖျက်ရန်"
     )
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -78,7 +74,6 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ လုပ်ဆောင်နေတာကို ဖျက်လိုက်ပါပြီ။")
 
 async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ /done - Video အကုန်ပို့ပြီးရင် Post ဆောက်မယ် """
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
         await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
@@ -90,7 +85,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     videos = context.user_data.get('temp_videos', [])
     
     if not movie_title or not poster_file_id or not synopsis:
-        await update.message.reply_text("⚠️ ကျေးဇူးပြုပြီး Poster, Synopsis, Video တွေ အရင်ပို့ပါ။")
+        await update.message.reply_text("⚠️ Poster, Synopsis, Video တွေ အရင်ပို့ပါ။")
         return
     
     if not videos:
@@ -99,7 +94,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"⏳ Post ဆောက်နေပါတယ်... (Videos: {len(videos)})")
     
-    # ---- Telegraph အတွက် ----
+    # ---- Telegraph ----
     telegraph_url = None
     telegraph_button = None
     
@@ -118,14 +113,11 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if CHANNEL_ID:
         try:
-            # ---- Keyboard ဆောက်မယ် ----
             keyboard = []
             
-            # Telegraph Button ရှိရင် ထည့်မယ်
             if telegraph_button:
                 keyboard.append([telegraph_button])
             
-            # Video Buttons (Deep Link)
             for ep in videos:
                 safe_title = movie_title.replace(" ", "_")
                 deep_link = f"https://t.me/{context.bot.username}?start={safe_title}_{ep['season']}_{ep['episode']}"
@@ -160,7 +152,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data.clear()
 
-# ---- Admin က Poster ပို့တာ ----
+# ---- Admin Handlers ----
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
@@ -170,14 +162,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['temp_poster'] = photo.file_id
     await update.message.reply_text("✅ ပိုစတာ သိမ်းဆည်းပြီးပါပြီ။ ဇာတ်ညွှန်း (စာသား) ကို ပို့ပါ။")
 
-# ---- Admin က Synopsis ပို့တာ ----
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
         return
     
     if not context.user_data.get('temp_poster'):
-        await update.message.reply_text("⚠️ ကျေးဇူးပြုပြီး Poster အရင်ပို့ပါ။")
+        await update.message.reply_text("⚠️ Poster အရင်ပို့ပါ။")
         return
     
     synopsis = update.message.text
@@ -186,11 +177,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "✅ ဇာတ်ညွှန်း သိမ်းဆည်းပြီးပါပြီ။\n\n"
         "📹 Video တွေ စတင်ပို့ပါ။\n"
-        "Caption ထဲမှာ `S01E01`, `s1e1`, `Season 1 Episode 1` စသဖြင့် ထည့်ပေးပါ။\n\n"
-        "✅ အကုန်ပို့ပြီးရင် `/done` ကို နှိပ်ပါ။"
+        "Caption ထဲမှာ `S01E01` ထည့်ပေးပါ။\n\n"
+        "✅ အကုန်ပို့ပြီးရင် `/done` နှိပ်ပါ။"
     )
 
-# ---- Admin က Video ပို့တာ (စုဆောင်းမယ်) ----
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
@@ -198,7 +188,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not context.user_data.get('temp_poster') or not context.user_data.get('temp_synopsis'):
-        await update.message.reply_text("⚠️ ကျေးဇူးပြုပြီး Poster နဲ့ Synopsis အရင်ပို့ပါ။")
+        await update.message.reply_text("⚠️ Poster နဲ့ Synopsis အရင်ပို့ပါ။")
         return
     
     if not update.message.video:
@@ -207,23 +197,19 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = update.message.video
     caption = update.message.caption or ""
     
-    # Season/Episode ကို ထုတ်ယူမယ်
     season, episode = parse_season_episode(caption)
     if not season or not episode:
-        await update.message.reply_text("⚠️ Caption ထဲမှာ `S01E01` (သို့) `s1e1` ထည့်ပေးပါ။")
+        await update.message.reply_text("⚠️ Caption ထဲမှာ `S01E01` ထည့်ပေးပါ။")
         return
     
-    # Movie Title ကို ထုတ်ယူမယ် (Year နဲ့ Quality ဖယ်ပြီး)
     movie_title = extract_movie_title(caption)
-    
-    # Episode Name ကို ထုတ်ယူမယ် (Button အတွက်)
     episode_name = extract_episode_name(caption)
     
-    # Movie Title ကို သိမ်းမယ် (ပထမဆုံး Video က Title ကို သုံးမယ်)
+    # Movie Title ကို သိမ်းမယ်
     if 'temp_movie' not in context.user_data:
         context.user_data['temp_movie'] = movie_title
     elif context.user_data['temp_movie'] != movie_title:
-        # Title ကွဲရင် အသစ်ကို သိမ်းမယ် (Error မပြန်တော့ဘူး)
+        # Title ကွဲရင် အသစ်ကို သိမ်းမယ်
         await update.message.reply_text(
             f"ℹ️ Movie Title ပြောင်းသွားပါတယ်။\n"
             f"အဟောင်း: `{context.user_data['temp_movie']}`\n"
@@ -255,7 +241,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ ဆက်ပို့နိုင်ပါတယ်။ အကုန်ပြီးရင် `/done` နှိပ်ပါ။"
     )
 
-# ---- Main Function ----
+# ---- Main ----
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     
