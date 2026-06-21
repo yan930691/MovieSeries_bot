@@ -5,14 +5,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from config import BOT_TOKEN, ADMIN_ID, CHANNEL_ID, RENDER_URL
 from telegraph_helper import create_telegraph_page
-from database import save_post_data, get_all_posts
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ---- Helper Functions ----
 def extract_season_episode_from_caption(caption):
-    """Caption ထဲက S01E12 ကို ထုတ်ယူမယ်"""
+    """Caption ထဲက S01E03 ကို ထုတ်ယူမယ်"""
     if not caption:
         return None, None
     
@@ -45,39 +44,6 @@ def extract_movie_title(caption):
     
     return cleaned or "Movie"
 
-def extract_deep_link_and_caption(text):
-    """
-    ခင်ဗျားပို့တဲ့ မက်ဆေ့ချ်ကနေ Deep Link နဲ့ Caption ကို ခွဲထုတ်မယ်
-    ပုံစံ:
-    🔗 သင်၏ Deep Link အဆင်သင့်ဖြစ်ပါပြီ။
-    
-    https://t.me/WZNmoviefilsend_bot?start=oWA-ex7me6BDcZTb
-    
-    The Wire (2002) - S01E12 - Cleaning Up 1080p MPK.mp4
-    """
-    if not text:
-        return None, None
-    
-    # URL ကို ရှာမယ်
-    url_pattern = r'https://t\.me/[^\s]+'
-    url_match = re.search(url_pattern, text)
-    
-    if not url_match:
-        return None, None
-    
-    deep_link = url_match.group(0)
-    
-    # URL ပြီးရင် ကျန်တဲ့ စာသားကို Caption အဖြစ် ယူမယ်
-    url_end = url_match.end()
-    caption = text[url_end:].strip()
-    
-    # ပထမဆုံး စာကြောင်းကို Caption အဖြစ် ယူမယ် (ဗွီဒီယိုနာမည်)
-    if caption:
-        lines = caption.split('\n')
-        caption = lines[0].strip()
-    
-    return deep_link, caption
-
 # ---- Command Handlers ----
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -85,11 +51,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
         return
     
-    posts_count = len(get_all_posts(limit=100))
-    
     await update.message.reply_text(
-        f"🎬 **Button Creator Bot**\n\n"
-        f"📊 သိမ်းဆည်းထားတဲ့ Post ပေါင်း: {posts_count}\n\n"
+        "🎬 **Button Creator Bot**\n\n"
         "📌 **ညွှန်ကြားချက်:**\n"
         "1️⃣ `/post` နှိပ်ပြီး Post အသစ်စတင်ပါ။\n"
         "2️⃣ Poster (ပုံ) → Caption (စာသား) ပို့ပါ။\n"
@@ -145,18 +108,20 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="📖 ဇာတ်ညွှန်းအပြည့်အစုံဖတ်ရန်",
                 url=telegraph_url
             )
-            caption_display = ""
+            caption_display = ""  # ဇာတ်ညွှန်းကို Button နဲ့ပဲ ဖတ်ရမယ်
         else:
-            caption_display = caption_text[:1024] + "..."
+            caption_display = caption_text[:1024] + "..."  # Telegraph မရရင် အတိုချုံးပြမယ်
     else:
-        caption_display = caption_text
+        caption_display = caption_text  # ဇာတ်ညွှန်း တစ်ခုလုံးကို ပြမယ်
     
     try:
         keyboard = []
         
+        # Telegraph Button ရှိရင် ထည့်မယ်
         if telegraph_button:
             keyboard.append([telegraph_button])
         
+        # Season အလိုက် ခလုတ်တွေကို စီစဉ်မယ်
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
             season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
@@ -170,33 +135,26 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
+        # ---- Post Caption ဆောက်မယ် ----
         if caption_display:
             final_caption = f"🎬 **{caption_display}**\n\n📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
         else:
             final_caption = f"📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
         
-        sent_msg = await update.message.reply_photo(
+        # Admin ကိုပဲ ပို့မယ်
+        await update.message.reply_photo(
             photo=poster,
             caption=final_caption,
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
         
-        try:
-            save_post_data(poster, caption_text, seasons, telegraph_url)
-            await update.message.reply_text(
-                f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n"
-                f"📊 Season {len(seasons)} ခု၊ Episode {total_episodes} ခု ပါဝင်ပါတယ်။\n"
-                f"💾 Database မှာလည်း သိမ်းဆည်းထားပါတယ်။\n\n"
-                f"💡 Channel မှာ ပြန်တင်ချင်ရင် ဒီ Post ကို Forward လုပ်ပါ။"
-            )
-        except Exception as db_error:
-            logger.error(f"Database Save Error: {db_error}")
-            await update.message.reply_text(
-                f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n"
-                f"📊 Season {len(seasons)} ခု၊ Episode {total_episodes} ခု ပါဝင်ပါတယ်။\n"
-                f"⚠️ Database မှာ သိမ်းရာမှာ အဆင်မပြေပေမယ့် Post က ရှိနေပါတယ်။"
-            )
+        # ---- Database ကို လုံးဝ မသိမ်းတော့ဘူး ----
+        await update.message.reply_text(
+            f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n\n"
+            f"📊 Season {len(seasons)} ခု၊ Episode {total_episodes} ခု ပါဝင်ပါတယ်။\n\n"
+            f"💡 Channel မှာ ပြန်တင်ချင်ရင် ဒီ Post ကို Forward လုပ်ပါ။"
+        )
         
     except Exception as e:
         await update.message.reply_text(f"❌ Post တင်ရာမှာ အမှားရှိသွားတယ်: {e}")
@@ -240,8 +198,7 @@ async def season_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ **Season {season_num}** အတွက် အဆင်သင့်ဖြစ်ပါပြီ။\n\n"
         f"🔗 Deep Link တွေ စတင်ပို့ပါ။\n"
-        f"ပုံစံ: (ခင်ဗျား ပို့နေကျအတိုင်း)\n"
-        f"```\n🔗 သင်၏ Deep Link အဆင်သင့်ဖြစ်ပါပြီ။\n\nhttps://t.me/Bot?start=xxx\n\nThe Wire - S01E01 - Title.mp4\n```\n\n"
+        f"ပုံစံ: `https://t.me/...` (သို့) `နာမည်|https://t.me/...`\n\n"
         f"✅ Season {season_num} ပြီးရင် `{season_num}` လို့ ရိုက်ပါ။"
     )
 
@@ -328,39 +285,37 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if step and step.startswith('adding_links_season_'):
         season_num = step.replace('adding_links_season_', '')
         
-        # ---- ခင်ဗျားရဲ့ ပုံစံအတိုင်း ကိုင်တွယ်မယ် ----
-        # ပုံစံ:
-        # 🔗 သင်၏ Deep Link အဆင်သင့်ဖြစ်ပါပြီ။
-        # 
-        # https://t.me/WZNmoviefilsend_bot?start=oWA-ex7me6BDcZTb
-        # 
-        # The Wire (2002) - S01E12 - Cleaning Up 1080p MPK.mp4
+        # ပုံစံခွဲထုတ်မယ်
+        if '|' in text:
+            parts = text.split('|', 1)
+            button_text = parts[0].strip()
+            button_url = parts[1].strip()
+        else:
+            button_url = text
+            if not button_url.startswith('https://t.me/'):
+                await update.message.reply_text(
+                    "⚠️ URL က `https://t.me/...` နဲ့ စရမယ်။\n\n"
+                    "ပုံစံ: `https://t.me/Bot?start=xxx` (သို့) `နာမည်|https://t.me/Bot?start=xxx`"
+                )
+                return
+            
+            # ---- ခင်ဗျားရဲ့ ပုံစံအတိုင်း ကိုင်တွယ်မယ် ----
+            # ခင်ဗျားပို့တဲ့ စာသားထဲက Season/Episode ကို ထုတ်ယူမယ်
+            # ဥပမာ - "The Wire (2002) - S01E12 - Cleaning Up 1080p MPK.mp4" ဆိုရင်
+            # Season 1, Episode 12 ကို ထုတ်ယူမယ်
+            caption_text_for_extract = text
+            season, episode = extract_season_episode_from_caption(caption_text_for_extract)
+            movie_title = extract_movie_title(caption_text_for_extract)
+            
+            if season and episode:
+                button_text = f"{movie_title} S{season}E{episode} ရယူရန် နှိပ်ပါ"
+            else:
+                button_text = f"Episode ရယူရန် နှိပ်ပါ"
         
-        # URL နဲ့ Caption ကို ခွဲထုတ်မယ်
-        deep_link, caption = extract_deep_link_and_caption(text)
-        
-        if not deep_link:
-            await update.message.reply_text(
-                "⚠️ Deep Link မတွေ့ပါ။\n\n"
-                "ပုံစံ:\n"
-                "```\n🔗 သင်၏ Deep Link အဆင်သင့်ဖြစ်ပါပြီ။\n\nhttps://t.me/Bot?start=xxx\n\nThe Wire - S01E01 - Title.mp4\n```"
-            )
+        if not button_url.startswith('https://t.me/'):
+            await update.message.reply_text("⚠️ URL က `https://t.me/...` နဲ့ စရမယ်။")
             return
         
-        if not caption:
-            # Caption မပါရင် URL ကိုပဲ သုံးမယ်
-            caption = deep_link
-        
-        # Season/Episode ကို Caption ကနေ ထုတ်ယူမယ်
-        season, episode = extract_season_episode_from_caption(caption)
-        movie_title = extract_movie_title(caption)
-        
-        if season and episode:
-            button_text = f"{movie_title} S{season}E{episode} ရယူရန် နှိပ်ပါ"
-        else:
-            button_text = f"Episode ရယူရန် နှိပ်ပါ"
-        
-        # Season အတွက် သိမ်းမယ်
         if 'temp_seasons' not in context.user_data:
             context.user_data['temp_seasons'] = {}
         
@@ -368,19 +323,18 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['temp_seasons'][season_num] = []
         
         # Episode Number ကို သိမ်းမယ် (စီရန်)
-        _, ep_num = extract_season_episode_from_caption(caption)
+        _, ep_num = extract_season_episode_from_caption(text)
         
         context.user_data['temp_seasons'][season_num].append({
             'text': button_text,
-            'url': deep_link,
+            'url': button_url,
             'episode': ep_num or 0
         })
         
         total = len(context.user_data['temp_seasons'][season_num])
         await update.message.reply_text(
             f"✅ **Season {season_num}** - Link #{total} သိမ်းဆည်းပြီးပါပြီ။\n"
-            f"📝 {button_text}\n"
-            f"🔗 {deep_link[:50]}...\n\n"
+            f"📝 {button_text}\n\n"
             f"✅ ဆက်ပို့နိုင်ပါတယ်။\n"
             f"✅ Season {season_num} ပြီးရင် `{season_num}` ရိုက်ပါ။"
         )
