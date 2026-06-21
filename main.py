@@ -51,7 +51,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📌 **အက်ဒမင်အတွက် ညွှန်ကြားချက်:**\n"
             "1️⃣ ပိုစတာ (ပုံ) ကို ပို့ပါ။\n"
             "2️⃣ ဇာတ်ညွှန်း (စာသား) ကို ပို့ပါ။\n"
-            "3️⃣ Video တွေကို ဆက်တိုက်ပို့ပါ။\n"
+            "3️⃣ Video တွေကို ဆက်တိုက်ပို့ပါ။ (Caption မှာ S01E01, s1e1 စသဖြင့်)\n"
             "4️⃣ Video အကုန်ပို့ပြီးရင် `/done` နှိပ်ပါ။"
         )
 
@@ -70,7 +70,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
         return
     
-    context.user_data.clear()
+    clear_admin_session(user_id)
     await update.message.reply_text("✅ လုပ်ဆောင်နေတာကို ဖျက်လိုက်ပါပြီ။")
 
 async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -79,17 +79,23 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
         return
     
-    movie_title = context.user_data.get('temp_movie')
-    poster_file_id = context.user_data.get('temp_poster')
-    synopsis = context.user_data.get('temp_synopsis')
-    videos = context.user_data.get('temp_videos', [])
+    # Session Data ကို DB ကနေ ယူမယ်
+    session_data = get_admin_session(user_id)
+    if not session_data:
+        await update.message.reply_text("⚠️ Session Data မတွေ့ပါ။ ကျေးဇူးပြုပြီး Poster, Synopsis, Video တွေ ပြန်ပို့ပါ။")
+        return
+    
+    movie_title = session_data.get('temp_movie')
+    poster_file_id = session_data.get('temp_poster')
+    synopsis = session_data.get('temp_synopsis')
+    videos = session_data.get('temp_videos', [])
     
     if not movie_title or not poster_file_id or not synopsis:
         await update.message.reply_text("⚠️ Poster, Synopsis, Video တွေ အရင်ပို့ပါ။")
         return
     
     if not videos:
-        await update.message.reply_text("⚠️ အနည်းဆုံး တစ်ပုဒ်တော့ Video ပို့ပေးပါ။")
+        await update.message.reply_text("⚠️ အနည်းဆုံး တစ်ပုဒ်တော့ Video ပိုပေးပါ။")
         return
     
     await update.message.reply_text(f"⏳ Post ဆောက်နေပါတယ်... (Videos: {len(videos)})")
@@ -150,7 +156,8 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("ℹ️ CHANNEL_ID မထည့်ထားလို့ Post ကို ဒီမှာပဲ ပြပေးလိုက်မယ်။")
         await update.message.reply_text(f"🎬 {movie_title}\n\n{synopsis_display[:200]}...")
     
-    context.user_data.clear()
+    # Session ကို ရှင်းမယ်
+    clear_admin_session(user_id)
 
 # ---- Admin Handlers ----
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -159,7 +166,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     photo = update.message.photo[-1]
-    context.user_data['temp_poster'] = photo.file_id
+    
+    # Session Data ကို DB မှာ သိမ်းမယ်
+    session_data = get_admin_session(user_id) or {}
+    session_data['temp_poster'] = photo.file_id
+    save_admin_session(user_id, session_data)
+    
     await update.message.reply_text("✅ ပိုစတာ သိမ်းဆည်းပြီးပါပြီ။ ဇာတ်ညွှန်း (စာသား) ကို ပို့ပါ။")
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -167,12 +179,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id != ADMIN_ID:
         return
     
-    if not context.user_data.get('temp_poster'):
+    session_data = get_admin_session(user_id) or {}
+    
+    if not session_data.get('temp_poster'):
         await update.message.reply_text("⚠️ Poster အရင်ပို့ပါ။")
         return
     
     synopsis = update.message.text
-    context.user_data['temp_synopsis'] = synopsis
+    session_data['temp_synopsis'] = synopsis
+    save_admin_session(user_id, session_data)
     
     await update.message.reply_text(
         "✅ ဇာတ်ညွှန်း သိမ်းဆည်းပြီးပါပြီ။\n\n"
@@ -187,7 +202,9 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
         return
     
-    if not context.user_data.get('temp_poster') or not context.user_data.get('temp_synopsis'):
+    session_data = get_admin_session(user_id) or {}
+    
+    if not session_data.get('temp_poster') or not session_data.get('temp_synopsis'):
         await update.message.reply_text("⚠️ Poster နဲ့ Synopsis အရင်ပို့ပါ။")
         return
     
@@ -197,42 +214,45 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = update.message.video
     caption = update.message.caption or ""
     
+    # Season/Episode ကို ထုတ်ယူမယ်
     season, episode = parse_season_episode(caption)
     if not season or not episode:
-        await update.message.reply_text("⚠️ Caption ထဲမှာ `S01E01` ထည့်ပေးပါ။")
+        await update.message.reply_text("⚠️ Caption ထဲမှာ `S01E01` (သို့) `s1e1` ထည့်ပေးပါ။")
         return
     
     movie_title = extract_movie_title(caption)
     episode_name = extract_episode_name(caption)
     
     # Movie Title ကို သိမ်းမယ်
-    if 'temp_movie' not in context.user_data:
-        context.user_data['temp_movie'] = movie_title
-    elif context.user_data['temp_movie'] != movie_title:
-        # Title ကွဲရင် အသစ်ကို သိမ်းမယ်
+    if 'temp_movie' not in session_data:
+        session_data['temp_movie'] = movie_title
+    elif session_data['temp_movie'] != movie_title:
         await update.message.reply_text(
             f"ℹ️ Movie Title ပြောင်းသွားပါတယ်။\n"
-            f"အဟောင်း: `{context.user_data['temp_movie']}`\n"
+            f"အဟောင်း: `{session_data['temp_movie']}`\n"
             f"အသစ်: `{movie_title}`\n\n"
             f"ဒီ Title အသစ်အတွက် ဆက်သိမ်းမယ်။"
         )
-        context.user_data['temp_movie'] = movie_title
+        session_data['temp_movie'] = movie_title
     
     # Video ကို DB မှာ သိမ်းမယ်
     save_video_file(video.file_id, movie_title, season, episode, caption)
     
     # Video ကို List ထဲ သိမ်းမယ်
-    if 'temp_videos' not in context.user_data:
-        context.user_data['temp_videos'] = []
+    if 'temp_videos' not in session_data:
+        session_data['temp_videos'] = []
     
-    context.user_data['temp_videos'].append({
+    session_data['temp_videos'].append({
         'file_id': video.file_id,
         'season': season,
         'episode': episode,
         'caption': episode_name or f"Episode {episode}"
     })
     
-    total = len(context.user_data['temp_videos'])
+    # Session Data ကို DB မှာ သိမ်းမယ်
+    save_admin_session(user_id, session_data)
+    
+    total = len(session_data['temp_videos'])
     await update.message.reply_text(
         f"✅ Video #{total} သိမ်းဆည်းပြီးပါပြီ။\n"
         f"🎬 {movie_title}\n"
