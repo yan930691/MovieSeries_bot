@@ -5,6 +5,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from config import BOT_TOKEN, ADMIN_ID, CHANNEL_ID, RENDER_URL
 from telegraph_helper import create_telegraph_page
+from database import save_post_data, get_all_posts
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,18 +34,12 @@ def extract_movie_title(caption):
     if not caption:
         return "Movie"
     
-    # Season/Episode ဖော်ပြချက်တွေကို ဖယ်ရှားမယ်
     cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', caption, flags=re.IGNORECASE)
     cleaned = re.sub(r's\d+e\d+', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\d+x\d+', '', cleaned)
-    
-    # Year ကို ဖယ်ရှားမယ်
     cleaned = re.sub(r'\(\d{4}\)', '', cleaned)
-    
-    # Quality နဲ့ Format တွေကို ဖယ်ရှားမယ်
     cleaned = re.sub(r'\b\d{3,4}p\b', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\b(MPK|MKV|MP4|AVI|x264|x265|HEVC)\b', '', cleaned, flags=re.IGNORECASE)
-    
     cleaned = re.sub(r'\s+', ' ', cleaned)
     cleaned = cleaned.strip()
     
@@ -57,8 +52,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
         return
     
+    # နောက်ဆုံး Post အရေအတွက်ကို ပြမယ်
+    posts_count = len(get_all_posts(limit=100))
+    
     await update.message.reply_text(
-        "🎬 **Button Creator Bot**\n\n"
+        f"🎬 **Button Creator Bot**\n\n"
+        f"📊 သိမ်းဆည်းထားတဲ့ Post ပေါင်း: {posts_count}\n\n"
         "📌 **ညွှန်ကြားချက်:**\n"
         "1️⃣ `/post` နှိပ်ပြီး Post အသစ်စတင်ပါ။\n"
         "2️⃣ Poster (ပုံ) → Caption (စာသား) ပို့ပါ။\n"
@@ -114,7 +113,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="📖 ဇာတ်ညွှန်းအပြည့်အစုံဖတ်ရန်",
                 url=telegraph_url
             )
-            caption_display = ""  # စာတန်း မပါတော့ဘူး
+            caption_display = ""
         else:
             caption_display = caption_text[:1024] + "..."
     else:
@@ -123,18 +122,13 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         keyboard = []
         
-        # Telegraph Button ရှိရင် ထည့်မယ်
         if telegraph_button:
             keyboard.append([telegraph_button])
         
-        # Season အလိုက် ခလုတ်တွေကို စီစဉ်မယ်
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
-            
-            # Episode Number အလိုက် စီမယ်
             season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
             
-            # Season Header
             keyboard.append([InlineKeyboardButton(f"🎬 Season {season_num} (Episodes: {len(season_links_sorted)})", callback_data="none")])
             
             for link_data in season_links_sorted:
@@ -144,25 +138,35 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Post Caption ဆောက်မယ်
         if caption_display:
             final_caption = f"🎬 **{caption_display}**\n\n📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
         else:
             final_caption = f"📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
         
         # Admin ကိုပဲ ပို့မယ်
-        await update.message.reply_photo(
+        sent_msg = await update.message.reply_photo(
             photo=poster,
             caption=final_caption,
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
         
-        await update.message.reply_text(
-            f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n\n"
-            f"📊 Season {len(seasons)} ခု၊ Episode {total_episodes} ခု ပါဝင်ပါတယ်။\n\n"
-            f"💡 Channel မှာ ပြန်တင်ချင်ရင် ဒီ Post ကို Forward လုပ်ပါ။"
-        )
+        # ---- Database မှာ သိမ်းမယ် (အရင်က လုပ်ထားတာတွေ ဆက်လက်ရှိနေမယ်) ----
+        try:
+            save_post_data(poster, caption_text, seasons, telegraph_url)
+            await update.message.reply_text(
+                f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n"
+                f"📊 Season {len(seasons)} ခု၊ Episode {total_episodes} ခု ပါဝင်ပါတယ်။\n"
+                f"💾 Database မှာလည်း သိမ်းဆည်းထားပါတယ်။\n\n"
+                f"💡 Channel မှာ ပြန်တင်ချင်ရင် ဒီ Post ကို Forward လုပ်ပါ။"
+            )
+        except Exception as db_error:
+            logger.error(f"Database Save Error: {db_error}")
+            await update.message.reply_text(
+                f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n"
+                f"📊 Season {len(seasons)} ခု၊ Episode {total_episodes} ခု ပါဝင်ပါတယ်။\n"
+                f"⚠️ Database မှာ သိမ်းရာမှာ အဆင်မပြေပေမယ့် Post က ရှိနေပါတယ်။"
+            )
         
     except Exception as e:
         await update.message.reply_text(f"❌ Post တင်ရာမှာ အမှားရှိသွားတယ်: {e}")
@@ -178,7 +182,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text("✅ လုပ်ဆောင်နေတာကို ဖျက်လိုက်ပါပြီ။")
 
-# ---- Season Command Handlers (/1, /2, /3 ...) ----
+# ---- Season Command Handlers ----
 async def season_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
@@ -254,7 +258,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # ---- Season Done (နံပါတ်တစ်ခုတည်းရိုက်တာ) ----
+    # ---- Season Done ----
     if text.isdigit() and step and step.startswith('adding_links_season_'):
         season_num = text
         current_season = context.user_data.get('current_season')
@@ -293,16 +297,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if step and step.startswith('adding_links_season_'):
         season_num = step.replace('adding_links_season_', '')
         
-        # ---- ခင်ဗျားပို့တဲ့ပုံစံကို ကိုင်တွယ်မယ် ----
-        # ပုံစံ ၁: "နာမည်|https://t.me/..." (ခင်ဗျား သတ်မှတ်ချင်ရင်)
+        # ပုံစံခွဲထုတ်မယ်
         if '|' in text:
             parts = text.split('|', 1)
             button_text = parts[0].strip()
             button_url = parts[1].strip()
         else:
-            # ပုံစံ ၂: "https://t.me/..." (Bot က ကိုယ်တိုင်ဖန်တီးမယ်)
             button_url = text
-            # URL မှန်မမှန် စစ်မယ်
             if not button_url.startswith('https://t.me/'):
                 await update.message.reply_text(
                     "⚠️ URL က `https://t.me/...` နဲ့ စရမယ်။\n\n"
@@ -310,36 +311,25 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
             
-            # ---- Caption ကနေ Season/Episode ထုတ်ယူမယ် ----
-            # ခင်ဗျားရဲ့ မက်ဆေ့ချ်မှာ Caption ပါရင် သိမ်းထားတဲ့ Caption ကို သုံးမယ်
-            # ဒါပေမယ့် ခင်ဗျား ပို့တဲ့ မက်ဆေ့ချ်မှာ စာသားပါတယ်
-            # ဒီတော့ ဒီ text ကိုပဲ သုံးမယ်
             caption_text = text
-            
-            # Season/Episode ကို ထုတ်ယူမယ်
             season, episode = extract_season_episode_from_caption(caption_text)
             movie_title = extract_movie_title(caption_text)
             
             if season and episode:
-                # အလိုအလျောက် ခလုတ်နာမည် ဖန်တီးမယ်
                 button_text = f"{movie_title} S{season}E{episode} ရယူရန် နှိပ်ပါ"
             else:
-                # မတွေ့ရင် ရိုးရိုးနာမည် သုံးမယ်
                 button_text = f"Episode ရယူရန် နှိပ်ပါ"
         
-        # URL မှန်မမှန် ထပ်စစ်မယ်
         if not button_url.startswith('https://t.me/'):
             await update.message.reply_text("⚠️ URL က `https://t.me/...` နဲ့ စရမယ်။")
             return
         
-        # Season အတွက် သိမ်းမယ်
         if 'temp_seasons' not in context.user_data:
             context.user_data['temp_seasons'] = {}
         
         if season_num not in context.user_data['temp_seasons']:
             context.user_data['temp_seasons'][season_num] = []
         
-        # Episode Number ကို သိမ်းမယ် (စီရန်)
         _, ep_num = extract_season_episode_from_caption(button_url)
         
         context.user_data['temp_seasons'][season_num].append({
