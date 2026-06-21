@@ -13,8 +13,12 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# ---------- MongoDB (မြန်အောင် ပြင်ထားတယ်) ----------
+# ---------- MongoDB ----------
 MONGO_URI = os.environ.get("MONGO_URI")
+if not MONGO_URI:
+    logger.error("MONGO_URI not set")
+    exit(1)
+
 client = MongoClient(
     MONGO_URI,
     tlsAllowInvalidCertificates=True,
@@ -39,6 +43,10 @@ def generate_payload():
 
 # ---------- Telegram Config ----------
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
+if not TOKEN:
+    logger.error("TELEGRAM_TOKEN not set")
+    exit(1)
+
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "").strip()
 if BOT_USERNAME.startswith("@"):
     BOT_USERNAME = BOT_USERNAME[1:]
@@ -48,14 +56,13 @@ ADMIN_IDS = [int(x.strip()) for x in os.environ.get("ADMIN_ID", "").split(",") i
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
-# ---------- Start Command (ဖိုင်ပြန်ပို့အောင် ပြင်ထားတယ်) ----------
+# ---------- Start Command (Deep Link Handler) ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     args = context.args
     
     logger.info(f"Start from {user_id}, args: {args}")
     
-    # Admin အတွက် /start
     if not args:
         if is_admin(user_id):
             await update.message.reply_text("🎬 Admin Panel\n\n/post - ပိုစတာဖန်တီးရန်")
@@ -63,7 +70,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("🔗 Deep Link ကို နှိပ်ပါ။")
         return
     
-    # Deep Link ကနေလာတာ
     payload = args[0]
     file_id, file_name = get_file(payload)
     
@@ -71,7 +77,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ လင့်ခ် သက်တမ်းကုန်သွားပါပြီ။")
         return
     
-    # 🔥 ဖိုင်ကို ချက်ချင်းပို့မယ် (Video ဆိုရင် Video အနေနဲ့)
     try:
         if file_name and file_name.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
             await update.message.reply_video(video=file_id, caption=f"🎬 {file_name}")
@@ -85,7 +90,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error sending file: {e}")
         await update.message.reply_text(f"❌ ဖိုင်ပို့ရာတွင် အမှားရှိသည်: {e}")
 
-# ---------- File Upload Handler (Admin ဖိုင်ပို့ရင် Deep Link ထုတ်မယ်) ----------
+# ---------- File Upload Handler ----------
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -109,7 +114,6 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         return
     
-    # Deep Link ထုတ်မယ် (ချက်ချင်းမြန်တယ်)
     payload = generate_payload()
     save_file(payload, file_obj.file_id, file_name)
     deep_link = create_deep_linked_url(BOT_USERNAME, payload)
@@ -138,6 +142,10 @@ async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- Flask Webhook ----------
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+if not WEBHOOK_URL:
+    logger.error("WEBHOOK_URL not set")
+    exit(1)
+
 telegram_app = Application.builder().token(TOKEN).build()
 
 telegram_app.add_handler(CommandHandler("start", start))
