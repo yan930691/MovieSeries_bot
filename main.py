@@ -174,7 +174,7 @@ def health_check():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
-        logger.info("Webhook received")
+        logger.info("🔥 Webhook request received!")  # ဒီလိုထည့်ပါ
         data = request.get_json(force=True)
         update = Update.de_json(data, telegram_app.bot)
         telegram_app.process_update(update)
