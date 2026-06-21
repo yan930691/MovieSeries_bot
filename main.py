@@ -4,7 +4,7 @@ import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from config import BOT_TOKEN, ADMIN_ID, CHANNEL_ID, RENDER_URL
-from database import save_post_data, get_latest_post
+from database import save_post_data  # get_latest_post ကို ဖယ်လိုက်တယ်
 from telegraph_helper import create_telegraph_page
 
 logging.basicConfig(level=logging.INFO)
@@ -96,7 +96,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             season_links = seasons[season_num]
             
             # Season Header အနေနဲ့ ခလုတ်တစ်ခု ထည့်မယ်
-            keyboard.append([InlineKeyboardButton(f"🎬 Season {season_num} (Episodes: {len(season_links)})", callback_data="none")])
+            keyboard.append([InlineKeyboardButton(f"─── Season {season_num} (Episodes: {len(season_links)}) ───", callback_data="none")])
             
             for link_data in season_links:
                 button_text = link_data['text']
