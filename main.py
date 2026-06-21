@@ -42,7 +42,7 @@ def generate_payload():
     return secrets.token_urlsafe(12)
 
 # ---------- Telegram Config ----------
-TOKEN = os.environ.get("TELEGRAM_TOKEN")
+OKEN = os.environ.get("TELEGRAM_TOKEN") or os.environ.get("BOT_TOKEN")
 if not TOKEN:
     logger.error("TELEGRAM_TOKEN not set")
     exit(1)
