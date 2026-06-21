@@ -42,7 +42,7 @@ def get_file(payload):
 def generate_payload():
     return secrets.token_urlsafe(12)
 
-# ---------- Telegraph (requests နဲ့) ----------
+# ---------- Telegraph ----------
 def create_telegraph_page(title, content):
     try:
         response = requests.post(
@@ -80,6 +80,8 @@ def is_admin(user_id):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     args = context.args
+    
+    logger.info(f"Start from {user_id}, args: {args}")
     
     if not args:
         if is_admin(user_id):
@@ -176,6 +178,7 @@ telegram_app.add_handler(MessageHandler(
     handle_file
 ))
 
+# 🔥 Webhook ကို စစ်ဆေးဖို့ Route
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
@@ -187,7 +190,13 @@ def webhook():
         logger.error(f"Webhook error: {e}")
         return "error", 500
 
+# 🔥 Health Check Route
+@app.route('/', methods=['GET'])
+def health_check():
+    return "Bot is running!", 200
+
 # ---------- Main ----------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    logger.info(f"Starting Flask on port {port}")
     app.run(host="0.0.0.0", port=port)
