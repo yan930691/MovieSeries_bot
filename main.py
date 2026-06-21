@@ -314,13 +314,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         url_match = re.search(r'https://t\.me/[^\s]+', text)
         
         if url_match:
-            button_url = url_match.group(0)  # https://t.me/... ကို ယူမယ်
+            button_url = url_match.group(0)
             
-            # 🔥 စာသားထဲက Season/Episode ကို ထုတ်ယူမယ်
-            # ဥပမာ - "The Wire (2002) - S01E12 - Cleaning Up 1080p MPK.mp4"
+            # 🔥 စာသားထဲက Season/Episode နဲ့ Movie Name ကို ထုတ်ယူမယ်
             season, episode = extract_season_episode_from_caption(text)
             movie_title = extract_movie_title(text)
-            episode_name = extract_episode_name(text)
             
             if season and episode:
                 # မြန်မာလို ခလုတ်နာမည် ဖန်တီးမယ်
@@ -328,13 +326,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 button_text = f"Episode ရယူရန် နှိပ်ပါ"
         else:
-            # ပုံစံ ၁: "နာမည်|https://t.me/..." (ခင်ဗျား သတ်မှတ်ချင်ရင်)
+            # ---- ခင်ဗျားရဲ့ မူရင်းပုံစံ "နာမည်|URL" ----
             if '|' in text:
                 parts = text.split('|', 1)
                 button_text = parts[0].strip()
                 button_url = parts[1].strip()
             else:
-                # ပုံစံ ၂: "https://t.me/..." (Bot က ကိုယ်တိုင်ဖန်တီးမယ်)
+                # ---- URL တစ်ခုတည်းပို့ရင် ----
                 button_url = text
                 if not button_url.startswith('https://t.me/'):
                     await update.message.reply_text(
@@ -343,7 +341,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     return
                 
-                # Season/Episode ကို ထုတ်ယူမယ်
+                # 🔥 စာသားထဲက Season/Episode ကို ထုတ်ယူမယ်
                 season, episode = extract_season_episode_from_caption(text)
                 movie_title = extract_movie_title(text)
                 
