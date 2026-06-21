@@ -16,7 +16,6 @@ BOT_USERNAME = None
 # ---- Helper Functions ----
 def generate_deep_link(file_name, caption):
     """ဖိုင်နာမည်နဲ့ Caption ကိုကြည့်ပြီး Deep Link ထုတ်ပေးမယ်"""
-    clean_name = re.sub(r'[^a-zA-Z0-9]', '_', file_name)[:30]
     hash_id = hashlib.md5(f"{file_name}_{caption}_{datetime.utcnow().timestamp()}".encode()).hexdigest()[:16]
     return f"https://t.me/{BOT_USERNAME}?start={hash_id}"
 
@@ -63,20 +62,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         photo=file_id,
                         caption=f"🖼️ **{file_name}**\n\n📝 {caption}"
                     )
-                elif file_type == "Animation":
-                    await update.message.reply_animation(
-                        animation=file_id,
-                        caption=f"🎞️ **{file_name}**\n\n📝 {caption}"
-                    )
-                elif file_type == "Sticker":
-                    await update.message.reply_sticker(sticker=file_id)
-                elif file_type == "Voice":
-                    await update.message.reply_voice(
-                        voice=file_id,
-                        caption=f"🎤 **{file_name}**\n\n📝 {caption}"
-                    )
-                elif file_type == "VideoNote":
-                    await update.message.reply_video_note(video_note=file_id)
                 else:
                     await update.message.reply_document(
                         document=file_id,
@@ -146,26 +131,6 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_name = f"Photo_{file_obj.file_unique_id[:8]}"
         file_id = file_obj.file_id
         file_type = "Photo"
-    elif update.message.animation:
-        file_obj = update.message.animation
-        file_name = file_obj.file_name or f"Animation_{file_obj.file_unique_id[:8]}"
-        file_id = file_obj.file_id
-        file_type = "Animation"
-    elif update.message.sticker:
-        file_obj = update.message.sticker
-        file_name = f"Sticker_{file_obj.file_unique_id[:8]}"
-        file_id = file_obj.file_id
-        file_type = "Sticker"
-    elif update.message.voice:
-        file_obj = update.message.voice
-        file_name = f"Voice_{file_obj.file_unique_id[:8]}"
-        file_id = file_obj.file_id
-        file_type = "Voice"
-    elif update.message.video_note:
-        file_obj = update.message.video_note
-        file_name = f"VideoNote_{file_obj.file_unique_id[:8]}"
-        file_id = file_obj.file_id
-        file_type = "VideoNote"
     else:
         await update.message.reply_text("⚠️ ဒီဖိုင်အမျိုးအစားကို မထောက်ပံ့ပါ။")
         return
@@ -192,17 +157,13 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Video": "🎬",
         "Document": "📄",
         "Audio": "🎵",
-        "Photo": "🖼️",
-        "Animation": "🎞️",
-        "Sticker": "🏷️",
-        "Voice": "🎤",
-        "VideoNote": "📹"
+        "Photo": "🖼️"
     }.get(file_type, "📁")
     
-    # Deep Link ကို ပြန်ပို့မယ်
+    # Deep Link ကို ပြန်ပို့မယ် (ခင်ဗျားပြထားတဲ့ပုံစံအတိုင်း)
     reply_text = (
         f"🔗 **Deep Link အဆင်သင့်ဖြစ်ပါပြီ။**\n\n"
-        f"`{deep_link}`\n\n"
+        f"{deep_link}\n\n"
         f"📁 **ဖိုင်အချက်အလက်:**\n"
         f"{type_emoji} {file_name}\n"
         f"📝 Caption: {caption}\n\n"
