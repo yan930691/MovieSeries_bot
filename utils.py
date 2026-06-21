@@ -28,33 +28,37 @@ def parse_season_episode(caption):
     return None, None
 
 def extract_movie_title(caption):
-    """Caption ထဲက ဇာတ်ကားနာမည်ကို ထုတ်ယူပါ"""
+    """Caption ထဲက ဇာတ်ကားနာမည်ကို ထုတ်ယူပါ (Button အတွက် အသုံးပြုမယ်)"""
     if not caption:
         return "Unknown Movie"
-    
-    # Season/Episode ဖော်ပြချက်တွေကို ဖယ်ရှားမယ်
-    cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', caption, flags=re.IGNORECASE)
-    cleaned = re.sub(r's\d+e\d+', '', cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'\d+x\d+', '', cleaned)
-    cleaned = re.sub(r'Episode\s*\d+', '', cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'E\d+', '', cleaned, flags=re.IGNORECASE)
-    cleaned = cleaned.strip()
-    
-    return cleaned or "Unknown Movie"
+    return caption.strip()
 
-def extract_episode_name(caption):
-    """Caption ထဲက Episode အမည်ကို ထုတ်ယူမယ် (ခလုတ်နာမည်အတွက်)"""
+def get_button_text(caption, season, episode):
+    """
+    Button ပေါ်မှာ ပြမယ့် စာသားကို ပြင်ဆင်မယ်
+    သတ်မှတ်ထားတဲ့ ပုံစံရှိရင် အတိုချုံးပြမယ်၊ မဟုတ်ရင် Caption အတိုင်းပြမယ်
+    """
     if not caption:
-        return "Episode"
+        return f"Episode {episode}"
     
-    # Season/Episode ဖော်ပြချက်တွေကို ဖယ်ရှားမယ်
-    cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', caption, flags=re.IGNORECASE)
-    cleaned = re.sub(r's\d+e\d+', '', cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'\d+x\d+', '', cleaned)
-    cleaned = re.sub(r'Episode\s*\d+', '', cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'E\d+', '', cleaned, flags=re.IGNORECASE)
-    cleaned = cleaned.strip()
+    # သတ်မှတ်ထားတဲ့ ပုံစံများ (ဥပမာ - "The Wire (2002) - S01E01 - The Target")
+    # ဒါမျိုးဆိုရင် အတိုချုံးပြမယ်
+    patterns = [
+        r'(.*?)\s*[-\s]*S\d+E\d+[-\s]*(.*)',  # The Wire - S01E01 - The Target
+        r'(.*?)\s*[-\s]*s\d+e\d+[-\s]*(.*)',  # The Wire - s1e1 - The Target
+        r'(.*?)\s*[-\s]*Season\s*\d+\s*Episode\s*\d+[-\s]*(.*)',  # The Wire - Season 1 Episode 1 - The Target
+    ]
     
-    if not cleaned:
-        return "Episode"
-    return cleaned
+    for pattern in patterns:
+        match = re.search(pattern, caption, re.IGNORECASE)
+        if match:
+            title = match.group(1).strip()
+            ep_title = match.group(2).strip()
+            if title and ep_title:
+                # ဇာတ်ကားနာမည်နဲ့ Episode နာမည်ကို အတိုချုံးပြမယ်
+                return f"{title[:30]} - {ep_title[:20]}" if len(title) > 30 else f"{title} - {ep_title}"
+            elif title:
+                return title[:40] if len(title) > 40 else title
+    
+    # သတ်မှတ်ပုံစံမရှိရင် Caption အတိုင်းပြမယ် (ဒါပေမယ့် ရှည်ရင် အတိုချုံးမယ်)
+    return caption[:50] + "..." if len(caption) > 50 else caption
