@@ -1,6 +1,7 @@
 import os
 import logging
 import re
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from config import BOT_TOKEN, ADMIN_ID, CHANNEL_ID, RENDER_URL
@@ -10,6 +11,8 @@ from utils import extract_deeplink_and_name, extract_season_episode_from_name, e
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
 
 # ---- Helper Function ----
 def extract_movie_title_from_name(name):
@@ -140,7 +143,6 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_post_data(poster, caption_text, seasons, telegraph_url)
         except Exception as db_error:
             logger.error(f"Database save error: {db_error}")
-            # 🔥 ဒီနေရာမှာ Error ကို မပြဘူး
         
         await update.message.reply_text(
             f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n\n"
@@ -149,7 +151,6 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
     except Exception as e:
-        # 🔥 ဒီနေရာမှာ Error ကို ရိုးရိုးရှင်းရှင်း ပြန်ပြောမယ်
         await update.message.reply_text(f"❌ Post တင်ရာမှာ အမှားရှိသွားတယ်။ ကျေးဇူးပြုပြီး နောက်မှ ပြန်ကြိုးစားပါ။")
         logger.error(f"Post error: {e}")
     
@@ -330,30 +331,36 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📌 `/cancel` - ဖျက်ရန်"
     )
 
-# ---- Main ----
-def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("post", post_command))
-    app.add_handler(CommandHandler("done", done_command))
-    app.add_handler(CommandHandler("cancel", cancel_command))
-    
-    for i in range(1, 21):
-        app.add_handler(CommandHandler(str(i), season_command))
-    
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    
-    port = int(os.environ.get("PORT", 10000))
-    logger.info(f"Starting webhook on port {port}")
-    
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        url_path=BOT_TOKEN,
-        webhook_url=f"{RENDER_URL}/{BOT_TOKEN}"
-    )
+# ---- Flask Webhook ----
+telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+telegram_app.add_handler(CommandHandler("start", start_command))
+telegram_app.add_handler(CommandHandler("post", post_command))
+telegram_app.add_handler(CommandHandler("done", done_command))
+telegram_app.add_handler(CommandHandler("cancel", cancel_command))
+
+for i in range(1, 21):
+    telegram_app.add_handler(CommandHandler(str(i), season_command))
+
+telegram_app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    try:
+        data = request.get_json(force=True)
+        update = Update.de_json(data, telegram_app.bot)
+        telegram_app.process_update(update)
+        return "ok", 200
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return "error", 500
+
+@app.route('/', methods=['GET'])
+def health_check():
+    return "Bot is running!", 200
+
+# ---- Main ----
 if __name__ == "__main__":
-    main()
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
