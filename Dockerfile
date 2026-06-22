@@ -9,4 +9,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Gunicorn နဲ့ Run မယ်
 CMD ["gunicorn", "--bind", "0.0.0.0:10000", "main:app"]
