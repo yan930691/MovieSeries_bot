@@ -110,15 +110,15 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if telegraph_button:
             keyboard.append([telegraph_button])
         
-        # 🔥 ဒီနေရာကို ပြင်ထားတယ် - Episode အလိုက် စီထားတယ်
+        # 🔥 Season အလိုက် စီပြီး Episode အလိုက် ထပ်စီမယ်
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
             
-            # Episode အလိုက် စီမယ်
+            # 🔥 Episode နံပါတ်အလိုက် စီမယ် (ဒါက အဓိက)
             season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
             
             # Season Header
-            keyboard.append([InlineKeyboardButton(f"─── အပိုင်း {season_num} (အပိုင်းပေါင်း: {len(season_links_sorted)}) ───", callback_data="none")])
+            keyboard.append([InlineKeyboardButton(f"─── အတွဲ {season_num} (အပိုင်းပေါင်း: {len(season_links_sorted)}) ───", callback_data="none")])
             
             for link_data in season_links_sorted:
                 button_text = link_data['text']
@@ -293,7 +293,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             button_text = extract_button_name_from_name(name)
         
-        # Season အတွက် သိမ်းမယ်
+        # Season အတွက် သိမ်းမယ် (episode နံပါတ်ကိုပါ သိမ်းမယ်)
         if 'temp_seasons' not in context.user_data:
             context.user_data['temp_seasons'] = {}
         
@@ -302,7 +302,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         context.user_data['temp_seasons'][season_num].append({
             'text': button_text,
-            'url': url
+            'url': url,
+            'episode': e or 0  # Episode နံပါတ်ကို သိမ်းမယ်
         })
         
         total = len(context.user_data['temp_seasons'][season_num])
