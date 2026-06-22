@@ -310,28 +310,27 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # 🔥 စာသားထဲက Deep Link ကို ရှာမယ်
         url_match = re.search(r'https://t\.me/[^\s]+', text)
-        button_url = None
-        button_text = None
         
         if url_match:
             button_url = url_match.group(0)
+            
             # 🔥 စာသားထဲက Season/Episode နဲ့ Movie Name ကို ထုတ်ယူမယ်
             season, episode = extract_season_episode_from_caption(text)
             movie_title = extract_movie_title(text)
             
+            # 🔥 ခလုတ်နာမည်ကို မြန်မာလို အပြည့်အစုံ ဖန်တီးမယ်
             if season and episode:
-                # 🔥 ခလုတ်နာမည်ကို မြန်မာလို အပြည့်အစုံ ဖန်တီးမယ်
                 button_text = f"{movie_title} Season {season} Episode {episode} ရယူရန် နှိပ်ပါ"
             else:
                 button_text = f"Episode ရယူရန် နှိပ်ပါ"
         else:
-            # ---- ခင်ဗျားရဲ့ မူရင်းပုံစံ "နာမည်|URL" ----
+            # ---- ပုံစံ ၁: "နာမည်|URL" ----
             if '|' in text:
                 parts = text.split('|', 1)
                 button_text = parts[0].strip()
                 button_url = parts[1].strip()
             else:
-                # ---- URL တစ်ခုတည်းပို့ရင် ----
+                # ---- ပုံစံ ၂: "URL" တစ်ခုတည်း ----
                 button_url = text
                 if not button_url.startswith('https://t.me/'):
                     await update.message.reply_text(
@@ -340,12 +339,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     return
                 
-                # 🔥 စာသားထဲက Season/Episode ကို ထုတ်ယူမယ်
+                # 🔥 စာသားထဲက Season/Episode နဲ့ Movie Name ကို ထုတ်ယူမယ်
                 season, episode = extract_season_episode_from_caption(text)
                 movie_title = extract_movie_title(text)
                 
+                # 🔥 ခလုတ်နာမည်ကို မြန်မာလို အပြည့်အစုံ ဖန်တီးမယ်
                 if season and episode:
-                    # 🔥 ခလုတ်နာမည်ကို မြန်မာလို အပြည့်အစုံ ဖန်တီးမယ်
                     button_text = f"{movie_title} Season {season} Episode {episode} ရယူရန် နှိပ်ပါ"
                 else:
                     button_text = f"Episode ရယူရန် နှိပ်ပါ"
