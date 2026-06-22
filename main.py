@@ -11,6 +11,29 @@ from utils import extract_deeplink_and_name, extract_season_episode_from_name, e
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ---- Helper Function ----
+def extract_movie_title_from_name(name):
+    """Name ထဲက Movie Name ကို ထုတ်ယူမယ် (ဥပမာ - The Wire)"""
+    if not name:
+        return "Movie"
+    
+    # Season/Episode ဖော်ပြချက်တွေကို ဖယ်ရှားမယ်
+    cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', name, flags=re.IGNORECASE)
+    cleaned = re.sub(r's\d+e\d+', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\d+x\d+', '', cleaned)
+    
+    # Year ကို ဖယ်ရှားမယ်
+    cleaned = re.sub(r'\(\d{4}\)', '', cleaned)
+    
+    # Quality နဲ့ Format တွေကို ဖယ်ရှားမယ်
+    cleaned = re.sub(r'\b\d{3,4}p\b', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\b(MPK|MKV|MP4|AVI|x264|x265|HEVC)\b', '', cleaned, flags=re.IGNORECASE)
+    
+    cleaned = re.sub(r'\s+', ' ', cleaned)
+    cleaned = cleaned.strip()
+    
+    return cleaned or "Movie"
+
 # ---- Command Handlers ----
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -90,8 +113,8 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
             
-            # Season Header
-            keyboard.append([InlineKeyboardButton(f"─── Season {season_num} (Episodes: {len(season_links)}) ───", callback_data="none")])
+            # Season Header (မြန်မာလို)
+            keyboard.append([InlineKeyboardButton(f"─── အပိုင်း {season_num} (အပိုင်းပေါင်း: {len(season_links)}) ───", callback_data="none")])
             
             for link_data in season_links:
                 button_text = link_data['text']
@@ -259,9 +282,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Season/Episode ကို နာမည်ထဲကနေ ထုတ်ယူမယ်
         s, e = extract_season_episode_from_name(name)
         
-        # Button Name ကို ပြင်ဆင်မယ်
+        # Button Name ကို ပြင်ဆင်မယ် (မြန်မာလို)
         if s and e:
-            button_text = f"S{s}E{e} - {extract_button_name_from_name(name)}"
+            movie_name = extract_movie_title_from_name(name)
+            button_text = f"{movie_name} Season {s} Episode {e} ရယူရန်"
         else:
             button_text = extract_button_name_from_name(name)
         
