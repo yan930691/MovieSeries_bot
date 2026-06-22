@@ -29,7 +29,7 @@ def extract_season_episode_from_caption(caption):
     return None, None
 
 def extract_movie_title(caption):
-    """Caption ထဲက ဇာတ်ကားနာမည်ကို ထုတ်ယူမယ်"""
+    """Caption ထဲက ဇာတ်ကားနာမည်ကို ထုတ်ယူမယ် (ပြင်ဆင်ပြီး)"""
     if not caption:
         return "Movie"
     
@@ -45,17 +45,32 @@ def extract_movie_title(caption):
     cleaned = re.sub(r'\b\d{3,4}p\b', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\b(MPK|MKV|MP4|AVI|x264|x265|HEVC)\b', '', cleaned, flags=re.IGNORECASE)
     
-    # အပိုစာသားတွေကို ဖယ်ရှားမယ်
-    cleaned = re.sub(r'-\s*', ' ', cleaned)
+    # 🔥 Episode Name (Sentencing, Cleaning Up, The Target, The Detail, The Buys) ကို ဖယ်ရှားမယ်
+    # ဥပမာ - "The Wire - Sentencing" ဆိုရင် "The Wire" ပဲ ကျန်မယ်
+    cleaned = re.sub(r'\s*-\s*[^-]+$', '', cleaned)  # နောက်ဆုံး Dash နဲ့ နာမည်ကို ဖယ်မယ်
+    cleaned = re.sub(r'\s*-\s*[^-]+\.', '', cleaned)  # Dot နဲ့ဆုံးတာကိုလည်း ဖယ်မယ်
+    
     cleaned = re.sub(r'\s+', ' ', cleaned)
     cleaned = cleaned.strip()
     
-    # "The" နဲ့စတဲ့ ဇာတ်ကားနာမည်တွေကို ထုတ်ယူမယ်
-    match = re.match(r'(The\s+\w+)', cleaned, re.IGNORECASE)
-    if match:
-        return match.group(1)
-    
     return cleaned or "Movie"
+
+def extract_episode_name(caption):
+    """Caption ထဲက Episode အမည်ကို ထုတ်ယူမယ်"""
+    if not caption:
+        return "Episode"
+    
+    # Season/Episode ကို ဖယ်ပြီး ကျန်တာကို Episode Name အဖြစ်သတ်မှတ်
+    cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', caption, flags=re.IGNORECASE)
+    cleaned = re.sub(r's\d+e\d+', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\d+x\d+', '', cleaned)
+    cleaned = re.sub(r'\(\d{4}\)', '', cleaned)
+    cleaned = re.sub(r'\b\d{3,4}p\b', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\b(MPK|MKV|MP4|AVI|x264|x265|HEVC)\b', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'\s+', ' ', cleaned)
+    cleaned = cleaned.strip()
+    
+    return cleaned or "Episode"
 
 # ---- Command Handlers ----
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -121,7 +136,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="📖 ဇာတ်ညွှန်းအပြည့်အစုံဖတ်ရန်",
                 url=telegraph_url
             )
-            caption_display = ""  # စာတန်း မပါတော့ဘူး
+            caption_display = ""
         else:
             caption_display = caption_text[:1024] + "..."
     else:
@@ -130,18 +145,13 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         keyboard = []
         
-        # Telegraph Button ရှိရင် ထည့်မယ်
         if telegraph_button:
             keyboard.append([telegraph_button])
         
-        # Season အလိုက် ခလုတ်တွေကို စီစဉ်မယ်
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
-            
-            # Episode Number အလိုက် စီမယ်
             season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
             
-            # Season Header
             keyboard.append([InlineKeyboardButton(f"🎬 Season {season_num} (Episodes: {len(season_links_sorted)})", callback_data="none")])
             
             for link_data in season_links_sorted:
@@ -151,13 +161,11 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Post Caption ဆောက်မယ်
         if caption_display:
             final_caption = f"🎬 **{caption_display}**\n\n📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
         else:
             final_caption = f"📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
         
-        # Admin ကိုပဲ ပို့မယ်
         await update.message.reply_photo(
             photo=poster,
             caption=final_caption,
@@ -302,16 +310,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # 🔥 စာသားထဲက Deep Link ကို ရှာမယ်
         url_match = re.search(r'https://t\.me/[^\s]+', text)
+        button_url = None
+        button_text = None
         
         if url_match:
             button_url = url_match.group(0)
-            
             # 🔥 စာသားထဲက Season/Episode နဲ့ Movie Name ကို ထုတ်ယူမယ်
             season, episode = extract_season_episode_from_caption(text)
             movie_title = extract_movie_title(text)
             
             if season and episode:
-                # 🔥 မြန်မာလို ခလုတ်နာမည် အပြည့်အစုံ ဖန်တီးမယ်
+                # 🔥 ခလုတ်နာမည်ကို မြန်မာလို အပြည့်အစုံ ဖန်တီးမယ်
                 button_text = f"{movie_title} Season {season} Episode {episode} ရယူရန် နှိပ်ပါ"
             else:
                 button_text = f"Episode ရယူရန် နှိပ်ပါ"
@@ -336,7 +345,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 movie_title = extract_movie_title(text)
                 
                 if season and episode:
-                    # 🔥 မြန်မာလို ခလုတ်နာမည် အပြည့်အစုံ ဖန်တီးမယ်
+                    # 🔥 ခလုတ်နာမည်ကို မြန်မာလို အပြည့်အစုံ ဖန်တီးမယ်
                     button_text = f"{movie_title} Season {season} Episode {episode} ရယူရန် နှိပ်ပါ"
                 else:
                     button_text = f"Episode ရယူရန် နှိပ်ပါ"
