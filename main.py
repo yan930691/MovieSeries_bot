@@ -110,13 +110,17 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if telegraph_button:
             keyboard.append([telegraph_button])
         
+        # 🔥 ဒီနေရာကို ပြင်ထားတယ် - Episode အလိုက် စီထားတယ်
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
             
-            # 🔥 ဒီနေရာကို ပြင်ထားတယ် - "အပိုင်း" ကို "အတွဲ" လို့ ပြောင်းထားတယ်
-            keyboard.append([InlineKeyboardButton(f"─── အတွဲ {season_num} (အပိုင်းပေါင်း: {len(season_links)}) ───", callback_data="none")])
+            # Episode အလိုက် စီမယ်
+            season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
             
-            for link_data in season_links:
+            # Season Header
+            keyboard.append([InlineKeyboardButton(f"─── အပိုင်း {season_num} (အပိုင်းပေါင်း: {len(season_links_sorted)}) ───", callback_data="none")])
+            
+            for link_data in season_links_sorted:
                 button_text = link_data['text']
                 button_url = link_data['url']
                 keyboard.append([InlineKeyboardButton(button_text, url=button_url)])
