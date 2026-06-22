@@ -110,11 +110,10 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if telegraph_button:
             keyboard.append([telegraph_button])
         
-        # 🔥 Season အလိုက် စီပြီး Episode အလိုက် ထပ်စီမယ်
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
             
-            # 🔥 Episode နံပါတ်အလိုက် စီမယ် (ဒါက အဓိက)
+            # Episode အလိုက် စီမယ်
             season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
             
             # Season Header
@@ -136,7 +135,12 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         
-        save_post_data(poster, caption_text, seasons, telegraph_url)
+        # 🔥 Database မှာ သိမ်းမယ် (Error ဖြစ်ရင် မပြဘူး)
+        try:
+            save_post_data(poster, caption_text, seasons, telegraph_url)
+        except Exception as db_error:
+            logger.error(f"Database save error: {db_error}")
+            # 🔥 ဒီနေရာမှာ Error ကို မပြဘူး
         
         await update.message.reply_text(
             f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n\n"
@@ -145,7 +149,9 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
     except Exception as e:
-        await update.message.reply_text(f"❌ Post တင်ရာမှာ အမှားရှိသွားတယ်: {e}")
+        # 🔥 ဒီနေရာမှာ Error ကို ရိုးရိုးရှင်းရှင်း ပြန်ပြောမယ်
+        await update.message.reply_text(f"❌ Post တင်ရာမှာ အမှားရှိသွားတယ်။ ကျေးဇူးပြုပြီး နောက်မှ ပြန်ကြိုးစားပါ။")
+        logger.error(f"Post error: {e}")
     
     context.user_data.clear()
 
@@ -303,7 +309,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['temp_seasons'][season_num].append({
             'text': button_text,
             'url': url,
-            'episode': e or 0  # Episode နံပါတ်ကို သိမ်းမယ်
+            'episode': e or 0
         })
         
         total = len(context.user_data['temp_seasons'][season_num])
