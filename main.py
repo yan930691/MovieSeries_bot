@@ -113,8 +113,8 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
             
-            # Season Header (မြန်မာလို)
-            keyboard.append([InlineKeyboardButton(f"─── အပိုင်း {season_num} (အပိုင်းပေါင်း: {len(season_links)}) ───", callback_data="none")])
+            # 🔥 ဒီနေရာကို ပြင်ထားတယ် - "အပိုင်း" ကို "အတွဲ" လို့ ပြောင်းထားတယ်
+            keyboard.append([InlineKeyboardButton(f"─── အတွဲ {season_num} (အပိုင်းပေါင်း: {len(season_links)}) ───", callback_data="none")])
             
             for link_data in season_links:
                 button_text = link_data['text']
