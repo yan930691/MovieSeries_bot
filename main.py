@@ -13,22 +13,16 @@ logger = logging.getLogger(__name__)
 
 # ---- Helper Function ----
 def extract_movie_title_from_name(name):
-    """Name ထဲက Movie Name ကို ထုတ်ယူမယ် (ဥပမာ - The Wire)"""
+    """Name ထဲက Movie Name ကို ထုတ်ယူမယ်"""
     if not name:
         return "Movie"
     
-    # Season/Episode ဖော်ပြချက်တွေကို ဖယ်ရှားမယ်
     cleaned = re.sub(r'(?:S|Season)\s*\d+\s*(?:E|Episode)\s*\d+', '', name, flags=re.IGNORECASE)
     cleaned = re.sub(r's\d+e\d+', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\d+x\d+', '', cleaned)
-    
-    # Year ကို ဖယ်ရှားမယ်
     cleaned = re.sub(r'\(\d{4}\)', '', cleaned)
-    
-    # Quality နဲ့ Format တွေကို ဖယ်ရှားမယ်
     cleaned = re.sub(r'\b\d{3,4}p\b', '', cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r'\b(MPK|MKV|MP4|AVI|x264|x265|HEVC)\b', '', cleaned, flags=re.IGNORECASE)
-    
     cleaned = re.sub(r'\s+', ' ', cleaned)
     cleaned = cleaned.strip()
     
@@ -46,7 +40,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📌 **ညွှန်ကြားချက်:**\n"
         "1️⃣ `/post` နှိပ်ပြီး Post အသစ်စတင်ပါ။\n"
         "2️⃣ Poster (ပုံ) → Caption (စာသား) ပို့ပါ။\n"
-        "3️⃣ Deep Link တွေ ဆက်တိုက်ပို့ပါ။ (ဘယ်ပုံစံမဆို ရပါတယ်)\n"
+        "3️⃣ Deep Link တွေ ဆက်တိုက်ပို့ပါ။\n"
         "4️⃣ အကုန်ပို့ပြီးရင် `/done` နှိပ်ပါ။"
     )
 
@@ -71,24 +65,23 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     links = context.user_data.get('temp_links', [])
     
     if not poster:
-        await update.message.reply_text("⚠️ Poster (ပုံ) အရင်ပို့ပါ။ `/post` နဲ့ ပြန်စပါ။")
+        await update.message.reply_text("⚠️ Poster (ပုံ) အရင်ပို့ပါ။")
         return
     
     if not caption_text:
-        await update.message.reply_text("⚠️ Caption (စာသား) အရင်ပို့ပါ။ `/post` နဲ့ ပြန်စပါ။")
+        await update.message.reply_text("⚠️ Caption (စာသား) အရင်ပို့ပါ။")
         return
     
     if not links:
         await update.message.reply_text("⚠️ အနည်းဆုံး Deep Link တစ်ခုတော့ ပို့ပေးပါ။")
         return
     
-    # ---- လင့်တွေကို Season အလိုက် ခွဲမယ် ----
+    # ---- Link တွေကို Season အလိုက် စီမယ် ----
     seasons = {}
     for link_data in links:
         url = link_data['url']
         name = link_data['name']
         
-        # Season/Episode ကို နာမည်ထဲကနေ ထုတ်ယူမယ်
         s, e = extract_season_episode_from_name(name)
         movie_name = extract_movie_title_from_name(name)
         
@@ -97,7 +90,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             season_key = str(s)
         else:
             button_text = extract_button_name_from_name(name)
-            season_key = "0"  # Season မပါရင် 0 အောက်မှာ သိမ်းမယ်
+            season_key = "0"
         
         if season_key not in seasons:
             seasons[season_key] = []
@@ -137,11 +130,8 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Season အလိုက် စီပြီး Episode အလိုက် ထပ်စီမယ်
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
-            
-            # Episode အလိုက် စီမယ်
             season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
             
-            # Season Header
             if season_num == "0":
                 header_text = "─── အခြား အပိုင်းများ ───"
             else:
@@ -150,14 +140,13 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard.append([InlineKeyboardButton(header_text, callback_data="none")])
             
             for link_data in season_links_sorted:
-                button_text = link_data['text']
-                button_url = link_data['url']
-                keyboard.append([InlineKeyboardButton(button_text, url=button_url)])
+                keyboard.append([InlineKeyboardButton(link_data['text'], url=link_data['url'])])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         final_caption = f"🎬 **{caption_display}**\n\n📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
         
+        # 🔥 Post နဲ့ Button တွဲပြီး တစ်ခါတည်းပို့မယ်
         await update.message.reply_photo(
             photo=poster,
             caption=final_caption,
@@ -165,7 +154,6 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         
-        # Database မှာ သိမ်းမယ်
         try:
             save_post_data(poster, caption_text, seasons, telegraph_url)
         except Exception as db_error:
@@ -228,14 +216,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "✅ Caption သိမ်းဆည်းပြီးပါပြီ။\n\n"
             "🔗 Deep Link တွေ စတင်ပို့ပါ။\n"
-            "ဘယ်ပုံစံမဆို ရပါတယ်။ Bot က ကိုယ်တိုင်ဖတ်ပြီး သိမ်းပေးမယ်။\n\n"
+            "ဘယ်ပုံစံမဆို ရပါတယ်။\n\n"
             "✅ အကုန်ပို့ပြီးရင် `/done` နှိပ်ပါ။"
         )
         return
     
     # ---- Deep Link တွေ စုဆောင်းနေတယ် ----
     if step == 'waiting_links':
-        # ---- ခင်ဗျားပို့တဲ့ ပုံစံကို ဖမ်းယူမယ် ----
         url, name = extract_deeplink_and_name(text)
         
         if not url:
@@ -245,7 +232,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        # Link ကို သိမ်းမယ်
         if 'temp_links' not in context.user_data:
             context.user_data['temp_links'] = []
         
@@ -257,7 +243,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total = len(context.user_data['temp_links'])
         await update.message.reply_text(
             f"✅ Link #{total} သိမ်းဆည်းပြီးပါပြီ။\n"
-            f"📝 {name[:50]}...\n\n"
             f"✅ ဆက်ပို့နိုင်ပါတယ်။\n"
             f"✅ အကုန်ပြီးရင် `/done` နှိပ်ပါ။"
         )
