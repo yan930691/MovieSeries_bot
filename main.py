@@ -2,7 +2,7 @@ import os
 import logging
 import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from config import BOT_TOKEN, ADMIN_ID, CHANNEL_ID, RENDER_URL
 from database import save_post_data
 from telegraph_helper import create_telegraph_page
@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 # ---- Helper Function ----
 def extract_movie_title_from_name(name):
-    """Name ထဲက Movie Name ကို ထုတ်ယူမယ်"""
     if not name:
         return "Movie"
     
@@ -102,7 +101,12 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
     
     total_episodes = sum(len(links) for links in seasons.values())
-    await update.message.reply_text(f"⏳ Post ဆောက်နေပါတယ်... (Seasons: {len(seasons)}, Episodes: {total_episodes})")
+    
+    # ---- အားလုံးကို သိမ်းထားမယ် ----
+    context.user_data['temp_poster_final'] = poster
+    context.user_data['temp_caption_final'] = caption_text
+    context.user_data['temp_seasons_final'] = seasons
+    context.user_data['temp_telegraph_url'] = None
     
     # ---- Telegraph ----
     telegraph_url = None
@@ -121,32 +125,76 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         caption_display = caption_text
     
+    context.user_data['temp_caption_display'] = caption_display
+    context.user_data['temp_telegraph_button'] = telegraph_button
+    context.user_data['temp_total_episodes'] = total_episodes
+    context.user_data['temp_season_count'] = len(seasons)
+    
+    # ---- ပထမစာမျက်နှာကို ပြမယ် ----
+    await show_page(update, context, page=0)
+
+async def show_page(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
+    """စာမျက်နှာတစ်ခုကို ပြမယ်"""
+    seasons = context.user_data.get('temp_seasons_final', {})
+    poster = context.user_data.get('temp_poster_final')
+    caption_display = context.user_data.get('temp_caption_display', '')
+    telegraph_button = context.user_data.get('temp_telegraph_button')
+    
+    if not seasons:
+        return
+    
+    # ---- ခလုတ်အားလုံးကို စုမယ် ----
+    all_buttons = []
+    
+    # Telegraph Button
+    if telegraph_button:
+        all_buttons.append(('header', telegraph_button))
+    
+    # Season Headers နဲ့ Episode Buttons
+    for season_num in sorted(seasons.keys(), key=int):
+        season_links = seasons[season_num]
+        season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
+        
+        if season_num == "0":
+            header_text = "─── အခြား အပိုင်းများ ───"
+        else:
+            header_text = f"─── အတွဲ {season_num} (အပိုင်းပေါင်း: {len(season_links_sorted)}) ───"
+        
+        all_buttons.append(('header', InlineKeyboardButton(header_text, callback_data="none")))
+        
+        for link_data in season_links_sorted:
+            all_buttons.append(('button', InlineKeyboardButton(link_data['text'], url=link_data['url'])))
+    
+    # ---- စာမျက်နှာခွဲမယ် (တစ်မျက်နှာ ၅၀ ခလုတ်) ----
+    ITEMS_PER_PAGE = 50
+    total_pages = (len(all_buttons) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+    
+    start_idx = page * ITEMS_PER_PAGE
+    end_idx = min(start_idx + ITEMS_PER_PAGE, len(all_buttons))
+    page_buttons = all_buttons[start_idx:end_idx]
+    
+    # ---- Keyboard ဆောက်မယ် ----
+    keyboard = []
+    for btn_type, btn in page_buttons:
+        keyboard.append([btn])
+    
+    # ---- စာမျက်နှာ ညွှန်ပြချက်တွေ ----
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton("◀️ နောက်", callback_data=f"page_{page-1}"))
+    nav_buttons.append(InlineKeyboardButton(f"{page+1}/{total_pages}", callback_data="none"))
+    if page < total_pages - 1:
+        nav_buttons.append(InlineKeyboardButton("ရှေ့ ▶️", callback_data=f"page_{page+1}"))
+    
+    if len(nav_buttons) > 1:
+        keyboard.append(nav_buttons)
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    final_caption = f"🎬 **{caption_display}**\n\n📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။\n\n📄 စာမျက်နှာ {page+1}/{total_pages}"
+    
+    # ---- Post ကို ပြန်ပို့မယ် ----
     try:
-        keyboard = []
-        
-        if telegraph_button:
-            keyboard.append([telegraph_button])
-        
-        # Season အလိုက် စီပြီး Episode အလိုက် ထပ်စီမယ်
-        for season_num in sorted(seasons.keys(), key=int):
-            season_links = seasons[season_num]
-            season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
-            
-            if season_num == "0":
-                header_text = "─── အခြား အပိုင်းများ ───"
-            else:
-                header_text = f"─── အတွဲ {season_num} (အပိုင်းပေါင်း: {len(season_links_sorted)}) ───"
-            
-            keyboard.append([InlineKeyboardButton(header_text, callback_data="none")])
-            
-            for link_data in season_links_sorted:
-                keyboard.append([InlineKeyboardButton(link_data['text'], url=link_data['url'])])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        final_caption = f"🎬 **{caption_display}**\n\n📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။"
-        
-        # 🔥 Post နဲ့ Button တွဲပြီး တစ်ခါတည်းပို့မယ်
         await update.message.reply_photo(
             photo=poster,
             caption=final_caption,
@@ -154,14 +202,19 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         
+        # ---- Database မှာ သိမ်းမယ် ----
         try:
-            save_post_data(poster, caption_text, seasons, telegraph_url)
+            save_post_data(poster, context.user_data.get('temp_caption_final'), seasons, context.user_data.get('temp_telegraph_url'))
         except Exception as db_error:
             logger.error(f"Database save error: {db_error}")
         
+        total_episodes = context.user_data.get('temp_total_episodes', 0)
+        season_count = context.user_data.get('temp_season_count', 0)
+        
         await update.message.reply_text(
             f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n\n"
-            f"📊 Season {len(seasons)} ခု၊ Episode {total_episodes} ခု ပါဝင်ပါတယ်။\n\n"
+            f"📊 Season {season_count} ခု၊ Episode {total_episodes} ခု ပါဝင်ပါတယ်။\n"
+            f"📄 စာမျက်နှာ {total_pages} ခု ခွဲထားပါတယ်။\n\n"
             f"💡 Channel မှာ ပြန်တင်ချင်ရင် ဒီ Post ကို Forward လုပ်ပါ။"
         )
         
@@ -170,6 +223,83 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Post error: {e}")
     
     context.user_data.clear()
+
+# ---- Callback Handler (စာမျက်နှာပြောင်းရန်) ----
+async def page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    if not data.startswith("page_"):
+        return
+    
+    try:
+        page = int(data.split("_")[1])
+    except:
+        return
+    
+    seasons = context.user_data.get('temp_seasons_final', {})
+    poster = context.user_data.get('temp_poster_final')
+    caption_display = context.user_data.get('temp_caption_display', '')
+    telegraph_button = context.user_data.get('temp_telegraph_button')
+    
+    if not seasons or not poster:
+        await query.edit_message_text("⚠️ ဒေတာ မတွေ့ပါ။ ကျေးဇူးပြုပြီး /post နဲ့ ပြန်စတင်ပါ။")
+        return
+    
+    # ---- ခလုတ်အားလုံးကို စုမယ် ----
+    all_buttons = []
+    
+    if telegraph_button:
+        all_buttons.append(('header', telegraph_button))
+    
+    for season_num in sorted(seasons.keys(), key=int):
+        season_links = seasons[season_num]
+        season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
+        
+        if season_num == "0":
+            header_text = "─── အခြား အပိုင်းများ ───"
+        else:
+            header_text = f"─── အတွဲ {season_num} (အပိုင်းပေါင်း: {len(season_links_sorted)}) ───"
+        
+        all_buttons.append(('header', InlineKeyboardButton(header_text, callback_data="none")))
+        
+        for link_data in season_links_sorted:
+            all_buttons.append(('button', InlineKeyboardButton(link_data['text'], url=link_data['url'])))
+    
+    ITEMS_PER_PAGE = 50
+    total_pages = (len(all_buttons) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+    
+    start_idx = page * ITEMS_PER_PAGE
+    end_idx = min(start_idx + ITEMS_PER_PAGE, len(all_buttons))
+    page_buttons = all_buttons[start_idx:end_idx]
+    
+    keyboard = []
+    for btn_type, btn in page_buttons:
+        keyboard.append([btn])
+    
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton("◀️ နောက်", callback_data=f"page_{page-1}"))
+    nav_buttons.append(InlineKeyboardButton(f"{page+1}/{total_pages}", callback_data="none"))
+    if page < total_pages - 1:
+        nav_buttons.append(InlineKeyboardButton("ရှေ့ ▶️", callback_data=f"page_{page+1}"))
+    
+    if len(nav_buttons) > 1:
+        keyboard.append(nav_buttons)
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    final_caption = f"🎬 **{caption_display}**\n\n📥 အောက်ပါခလုတ်များကို နှိပ်ပြီး ကြည့်ရှု့ပါ။\n\n📄 စာမျက်နှာ {page+1}/{total_pages}"
+    
+    await query.edit_message_media(
+        media=telegram.InputMediaPhoto(
+            media=poster,
+            caption=final_caption,
+            parse_mode='Markdown'
+        ),
+        reply_markup=reply_markup
+    )
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -264,6 +394,7 @@ def main():
     app.add_handler(CommandHandler("post", post_command))
     app.add_handler(CommandHandler("done", done_command))
     app.add_handler(CommandHandler("cancel", cancel_command))
+    app.add_handler(CallbackQueryHandler(page_callback, pattern="page_"))
     
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
