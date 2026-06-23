@@ -46,10 +46,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📌 **ညွှန်ကြားချက်:**\n"
         "1️⃣ `/post` နှိပ်ပြီး Post အသစ်စတင်ပါ။\n"
         "2️⃣ Poster (ပုံ) → Caption (စာသား) ပို့ပါ။\n"
-        "3️⃣ `/1`, `/2`, `/3` ... နှိပ်ပြီး Season ရွေးပါ။\n"
-        "4️⃣ Deep Link တွေ ဆက်တိုက်ပို့ပါ။ (ဘယ်ပုံစံမဆို ရပါတယ်)\n"
-        "5️⃣ Season ပြီးရင် `1`, `2`, `3` ... နှိပ်ပါ။\n"
-        "6️⃣ အကုန်ပြီးရင် `/done` နှိပ်ပါ။"
+        "3️⃣ Deep Link တွေ ဆက်တိုက်ပို့ပါ။ (ဘယ်ပုံစံမဆို ရပါတယ်)\n"
+        "4️⃣ အကုန်ပို့ပြီးရင် `/done` နှိပ်ပါ။"
     )
 
 async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -70,7 +68,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     poster = context.user_data.get('temp_poster')
     caption_text = context.user_data.get('temp_caption')
-    seasons = context.user_data.get('temp_seasons', {})
+    links = context.user_data.get('temp_links', [])
     
     if not poster:
         await update.message.reply_text("⚠️ Poster (ပုံ) အရင်ပို့ပါ။ `/post` နဲ့ ပြန်စပါ။")
@@ -80,9 +78,35 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Caption (စာသား) အရင်ပို့ပါ။ `/post` နဲ့ ပြန်စပါ။")
         return
     
-    if not seasons:
-        await update.message.reply_text("⚠️ အနည်းဆုံး Season တစ်ခုတော့ ထည့်ပေးပါ။")
+    if not links:
+        await update.message.reply_text("⚠️ အနည်းဆုံး Deep Link တစ်ခုတော့ ပို့ပေးပါ။")
         return
+    
+    # ---- လင့်တွေကို Season အလိုက် ခွဲမယ် ----
+    seasons = {}
+    for link_data in links:
+        url = link_data['url']
+        name = link_data['name']
+        
+        # Season/Episode ကို နာမည်ထဲကနေ ထုတ်ယူမယ်
+        s, e = extract_season_episode_from_name(name)
+        movie_name = extract_movie_title_from_name(name)
+        
+        if s and e:
+            button_text = f"{movie_name} Season {s} Episode {e} ရယူရန်"
+            season_key = str(s)
+        else:
+            button_text = extract_button_name_from_name(name)
+            season_key = "0"  # Season မပါရင် 0 အောက်မှာ သိမ်းမယ်
+        
+        if season_key not in seasons:
+            seasons[season_key] = []
+        
+        seasons[season_key].append({
+            'text': button_text,
+            'url': url,
+            'episode': e or 0
+        })
     
     total_episodes = sum(len(links) for links in seasons.values())
     await update.message.reply_text(f"⏳ Post ဆောက်နေပါတယ်... (Seasons: {len(seasons)}, Episodes: {total_episodes})")
@@ -110,6 +134,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if telegraph_button:
             keyboard.append([telegraph_button])
         
+        # Season အလိုက် စီပြီး Episode အလိုက် ထပ်စီမယ်
         for season_num in sorted(seasons.keys(), key=int):
             season_links = seasons[season_num]
             
@@ -117,7 +142,12 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             season_links_sorted = sorted(season_links, key=lambda x: x.get('episode', 0))
             
             # Season Header
-            keyboard.append([InlineKeyboardButton(f"─── အတွဲ {season_num} (အပိုင်းပေါင်း: {len(season_links_sorted)}) ───", callback_data="none")])
+            if season_num == "0":
+                header_text = "─── အခြား အပိုင်းများ ───"
+            else:
+                header_text = f"─── အတွဲ {season_num} (အပိုင်းပေါင်း: {len(season_links_sorted)}) ───"
+            
+            keyboard.append([InlineKeyboardButton(header_text, callback_data="none")])
             
             for link_data in season_links_sorted:
                 button_text = link_data['text']
@@ -135,12 +165,11 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         
-        # 🔥 Database မှာ သိမ်းမယ် (Error ဖြစ်ရင် မပြဘူး)
+        # Database မှာ သိမ်းမယ်
         try:
             save_post_data(poster, caption_text, seasons, telegraph_url)
         except Exception as db_error:
             logger.error(f"Database save error: {db_error}")
-            # 🔥 ဒီနေရာမှာ Error ကို မပြဘူး
         
         await update.message.reply_text(
             f"✅ **Post ကို သင့်ဆီကိုပဲ ပို့လိုက်ပါပြီ။**\n\n"
@@ -149,7 +178,6 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
     except Exception as e:
-        # 🔥 ဒီနေရာမှာ Error ကို ရိုးရိုးရှင်းရှင်း ပြန်ပြောမယ်
         await update.message.reply_text(f"❌ Post တင်ရာမှာ အမှားရှိသွားတယ်။ ကျေးဇူးပြုပြီး နောက်မှ ပြန်ကြိုးစားပါ။")
         logger.error(f"Post error: {e}")
     
@@ -163,38 +191,6 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data.clear()
     await update.message.reply_text("✅ လုပ်ဆောင်နေတာကို ဖျက်လိုက်ပါပြီ။")
-
-# ---- Season Command Handlers ----
-async def season_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("⛔ ခွင့်မပြုပါ။")
-        return
-    
-    command_text = update.message.text
-    season_num = command_text.replace('/', '').strip()
-    
-    if not season_num.isdigit():
-        await update.message.reply_text("⚠️ ကျေးဇူးပြုပြီး `/1`, `/2`, `/3` ပုံစံသုံးပါ။")
-        return
-    
-    if not context.user_data.get('temp_poster'):
-        await update.message.reply_text("⚠️ Poster (ပုံ) အရင်ပို့ပါ။ `/post` နဲ့ ပြန်စပါ။")
-        return
-    
-    if not context.user_data.get('temp_caption'):
-        await update.message.reply_text("⚠️ Caption (စာသား) အရင်ပို့ပါ။ `/post` နဲ့ ပြန်စပါ။")
-        return
-    
-    context.user_data['current_season'] = season_num
-    context.user_data['step'] = f'adding_links_season_{season_num}'
-    
-    await update.message.reply_text(
-        f"✅ **Season {season_num}** အတွက် အဆင်သင့်ဖြစ်ပါပြီ။\n\n"
-        f"🔗 Deep Link တွေ စတင်ပို့ပါ။\n"
-        f"ဘယ်ပုံစံမဆို ရပါတယ်။ Bot က ကိုယ်တိုင်ဖတ်ပြီး သိမ်းပေးမယ်။\n\n"
-        f"✅ Season {season_num} ပြီးရင် `{season_num}` လို့ ရိုက်ပါ။"
-    )
 
 # ---- Handlers ----
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -228,57 +224,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---- Caption စောင့်နေတယ် ----
     if step == 'waiting_caption':
         context.user_data['temp_caption'] = text
-        context.user_data['step'] = 'waiting_season'
+        context.user_data['step'] = 'waiting_links'
         await update.message.reply_text(
             "✅ Caption သိမ်းဆည်းပြီးပါပြီ။\n\n"
-            "📌 Season ရွေးပါ။\n"
-            "• `/1` - Season 1\n"
-            "• `/2` - Season 2\n"
-            "• `/3` - Season 3\n"
-            "• ... စသဖြင့်\n\n"
-            "✅ Season ပြီးရင် သက်ဆိုင်ရာ နံပါတ်ကို ရိုက်ပါ။"
+            "🔗 Deep Link တွေ စတင်ပို့ပါ။\n"
+            "ဘယ်ပုံစံမဆို ရပါတယ်။ Bot က ကိုယ်တိုင်ဖတ်ပြီး သိမ်းပေးမယ်။\n\n"
+            "✅ အကုန်ပို့ပြီးရင် `/done` နှိပ်ပါ။"
         )
-        return
-    
-    # ---- Season Done ----
-    if text.isdigit() and step and step.startswith('adding_links_season_'):
-        season_num = text
-        current_season = context.user_data.get('current_season')
-        
-        if not current_season:
-            await update.message.reply_text("⚠️ Season မရွေးရသေးပါ။ `/1`, `/2` နဲ့ အရင်ရွေးပါ။")
-            return
-        
-        if current_season != season_num:
-            await update.message.reply_text(
-                f"⚠️ သင်က Season {current_season} အတွက် လုပ်နေပါတယ်။\n"
-                f"Season {season_num} ကို ပြီးကြောင်း အသိပေးချင်ရင် `/{season_num}` နဲ့ အရင်ရွေးပါ။"
-            )
-            return
-        
-        if 'temp_seasons' not in context.user_data:
-            context.user_data['temp_seasons'] = {}
-        
-        if season_num not in context.user_data['temp_seasons']:
-            await update.message.reply_text(f"⚠️ Season {season_num} အတွက် Link တစ်ခုမှ မတွေ့ပါ။")
-            return
-        
-        link_count = len(context.user_data['temp_seasons'][season_num])
-        await update.message.reply_text(
-            f"✅ **Season {season_num}** ပြီးပါပြီ။\n"
-            f"📝 Link {link_count} ခု သိမ်းဆည်းထားပါတယ်။\n\n"
-            f"📌 နောက် Season အတွက် `/2`, `/3` နှိပ်ပါ။\n"
-            f"📌 အကုန်ပြီးရင် `/done` နှိပ်ပါ။"
-        )
-        
-        context.user_data['current_season'] = None
-        context.user_data['step'] = 'waiting_season'
         return
     
     # ---- Deep Link တွေ စုဆောင်းနေတယ် ----
-    if step and step.startswith('adding_links_season_'):
-        season_num = step.replace('adding_links_season_', '')
-        
+    if step == 'waiting_links':
         # ---- ခင်ဗျားပို့တဲ့ ပုံစံကို ဖမ်းယူမယ် ----
         url, name = extract_deeplink_and_name(text)
         
@@ -289,35 +245,21 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        # Season/Episode ကို နာမည်ထဲကနေ ထုတ်ယူမယ်
-        s, e = extract_season_episode_from_name(name)
+        # Link ကို သိမ်းမယ်
+        if 'temp_links' not in context.user_data:
+            context.user_data['temp_links'] = []
         
-        # Button Name ကို ပြင်ဆင်မယ် (မြန်မာလို)
-        if s and e:
-            movie_name = extract_movie_title_from_name(name)
-            button_text = f"{movie_name} Season {s} Episode {e} ရယူရန်"
-        else:
-            button_text = extract_button_name_from_name(name)
-        
-        # Season အတွက် သိမ်းမယ် (episode နံပါတ်ကိုပါ သိမ်းမယ်)
-        if 'temp_seasons' not in context.user_data:
-            context.user_data['temp_seasons'] = {}
-        
-        if season_num not in context.user_data['temp_seasons']:
-            context.user_data['temp_seasons'][season_num] = []
-        
-        context.user_data['temp_seasons'][season_num].append({
-            'text': button_text,
+        context.user_data['temp_links'].append({
             'url': url,
-            'episode': e or 0
+            'name': name
         })
         
-        total = len(context.user_data['temp_seasons'][season_num])
+        total = len(context.user_data['temp_links'])
         await update.message.reply_text(
-            f"✅ **Season {season_num}** - Link #{total} သိမ်းဆည်းပြီးပါပြီ။\n"
-            f"📝 {button_text}\n\n"
+            f"✅ Link #{total} သိမ်းဆည်းပြီးပါပြီ။\n"
+            f"📝 {name[:50]}...\n\n"
             f"✅ ဆက်ပို့နိုင်ပါတယ်။\n"
-            f"✅ Season {season_num} ပြီးရင် `{season_num}` ရိုက်ပါ။"
+            f"✅ အကုန်ပြီးရင် `/done` နှိပ်ပါ။"
         )
         return
     
@@ -325,7 +267,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "⚠️ နားမလည်ပါ။\n\n"
         "📌 `/post` - Post အသစ်စတင်ရန်\n"
-        "📌 `/1`, `/2`, `/3` - Season ရွေးရန်\n"
         "📌 `/done` - Post တင်ရန်\n"
         "📌 `/cancel` - ဖျက်ရန်"
     )
@@ -338,9 +279,6 @@ def main():
     app.add_handler(CommandHandler("post", post_command))
     app.add_handler(CommandHandler("done", done_command))
     app.add_handler(CommandHandler("cancel", cancel_command))
-    
-    for i in range(1, 21):
-        app.add_handler(CommandHandler(str(i), season_command))
     
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
